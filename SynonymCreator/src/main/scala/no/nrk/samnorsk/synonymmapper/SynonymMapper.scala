@@ -13,7 +13,7 @@ object SynonymMapper {
   case class WordAndFrequency(word: String, mappingFrequency: Int)
   case class MappingWithSimilarity(source: String, target: String, similarity: Double)
 
-  val TokenizerRegex = """([\wØÆÅøæåéÉàÀôÔòÒ]+)""".r
+  val TokenizerRegex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
   val JaroWinler = new JaroWinkler()
 
   def getLineMappings(wordSimilarities: Seq[MappingWithSimilarity]): Seq[Mapping] = {
@@ -27,47 +27,46 @@ object SynonymMapper {
       } else {
         consecutiveErrorsCounter = 0
       }
-      Mapping(wordpair.source, wordpair.target)
+      Mapping(wordpair.source.toLowerCase, wordpair.target.toLowerCase)
     })
     if (!tooManyErrors) mappings else Seq.empty[Mapping]
   }
 
-  def parseLine(sourceLine: String, targetLine: String): Seq[Mapping] = {
+  def getSentenceMapping(sourceSentence: String, targetSentence: String): Seq[Mapping] = {
 
-    val sourceTokens = TokenizerRegex.findAllIn(sourceLine).toSeq
-    val targetTokens = TokenizerRegex.findAllIn(targetLine).toSeq
+    val sourceTokens = TokenizerRegex.findAllIn(sourceSentence).toSeq
+    val targetTokens = TokenizerRegex.findAllIn(targetSentence).toSeq
 
-    val articleMapping = if (sourceTokens.size == targetTokens.size) {
+    val sentenceMapping = if (sourceTokens.size == targetTokens.size) {
       val wordsWithSimilarity: Seq[MappingWithSimilarity] =
         sourceTokens.zip(targetTokens)
 
-          // Words out of voc has been annotated with * prefix.
+          // Words out of voc have been annotated with * prefix.
           .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
           .map { case (sourceWord, targetWord) => MappingWithSimilarity(sourceWord, targetWord, JaroWinler.similarity(sourceWord, targetWord)) }
 
-      wordsWithSimilarity
-        .flatMap(wordSim => getLineMappings(wordsWithSimilarity))
-
+      getLineMappings(wordsWithSimilarity)
     } else {
       Seq.empty[Mapping]
     }
-    articleMapping
+    sentenceMapping
   }
 
-  def parseCorpus(source: File, target: File): Iterator[Mapping] = {
-    val (sourceLines, sourceLinesCopy) = Source.fromFile(source)(codec = Codec.UTF8).getLines().duplicate
-    val (targetLines, targetLinesCopy) = Source.fromFile(target)(codec = Codec.UTF8).getLines().duplicate
-    require(sourceLinesCopy.size == targetLinesCopy.size, "The corpora have different number of lines.")
+  def getCorpusMapping(source: File, target: File): Iterator[Mapping] = {
+    require(Source.fromFile(source)(codec = Codec.UTF8).getLines().size == Source.fromFile(target)(codec = Codec.UTF8).getLines().size,
+      "The corpora have different number of lines.")
+    val sourceLines = Source.fromFile(source)(codec = Codec.UTF8).getLines()
+    val targetLines = Source.fromFile(target)(codec = Codec.UTF8).getLines()
 
     var counter = 0
     val mappingsInCorpus: Iterator[Mapping] = sourceLines.zip(targetLines)
-      .flatMap { case (sourceLine, targetLine) => {
+      .flatMap { case (sourceArticle, targetArticle) => {
         counter += 1
         if (counter % 10000 == 0) {
           println(counter)
         }
-        sourceLine.split('.').zip(targetLine.split('.'))
-          .flatMap { case (sourceSentence, targetSentence) => parseLine(sourceSentence, targetSentence)}
+        sourceArticle.split('.').zip(targetArticle.split('.'))
+          .flatMap { case (sourceSentence, targetSentence) => getSentenceMapping(sourceSentence, targetSentence)}
       }}
     mappingsInCorpus
   }
@@ -176,8 +175,8 @@ object SynonymMapper {
     val source2 = args(2)
     val target2 = args(3)
 
-    val mappingsCorpus1 = parseCorpus(new File(source1), new File(target1))
-    val mappingsCorpus2 = parseCorpus(new File(source2), new File(target2))
+    val mappingsCorpus1 = getCorpusMapping(new File(source1), new File(target1))
+    val mappingsCorpus2 = getCorpusMapping(new File(source2), new File(target2))
     val frequencyMap = (mappingsCorpus1 ++ mappingsCorpus2)
       .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
       .toMap
