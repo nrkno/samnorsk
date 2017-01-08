@@ -4,6 +4,7 @@ import java.io.{File, PrintWriter}
 
 import info.debatty.java.stringsimilarity.JaroWinkler
 
+import scala.collection.mutable
 import scala.io.{Codec, Source}
 
 object SynonymMapper {
@@ -15,14 +16,28 @@ object SynonymMapper {
   val TokenizerRegex = """([\wØÆÅøæåéÉàÀôÔòÒ]+)""".r
   val JaroWinler = new JaroWinkler()
 
-  def parseLine(frequencyDict: scala.collection.mutable.Map[Mapping, Int], sourceLine: String, targetLine: String) = {
-    val lineFrequencies = scala.collection.mutable.Map[Mapping, Int]()
+  def getLineMappings(wordSimilarities: Seq[MappingWithSimilarity]): Seq[Mapping] = {
+    var consecutiveErrorsCounter = 0
+    var tooManyErrors = false
+    val mappings = wordSimilarities.map(wordpair => {
+      if (wordpair.similarity < 0.8) {
+        consecutiveErrorsCounter += 1
+      } else if (consecutiveErrorsCounter >= 3) {
+        tooManyErrors = true
+      } else {
+        consecutiveErrorsCounter = 0
+      }
+      Mapping(wordpair.source, wordpair.target)
+    })
+    if (!tooManyErrors) mappings else Seq.empty[Mapping]
+  }
+
+  def parseLine(sourceLine: String, targetLine: String): Seq[Mapping] = {
 
     val sourceTokens = TokenizerRegex.findAllIn(sourceLine).toSeq
     val targetTokens = TokenizerRegex.findAllIn(targetLine).toSeq
 
-    if (sourceTokens.size == targetTokens.size) {
-      var consecutiveErrorsCounter = 0
+    val articleMapping = if (sourceTokens.size == targetTokens.size) {
       val wordsWithSimilarity: Seq[MappingWithSimilarity] =
         sourceTokens.zip(targetTokens)
 
@@ -30,43 +45,32 @@ object SynonymMapper {
           .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
           .map { case (sourceWord, targetWord) => MappingWithSimilarity(sourceWord, targetWord, JaroWinler.similarity(sourceWord, targetWord)) }
 
-      for (wordspair <- wordsWithSimilarity) {
-        if (wordspair.similarity < 0.8) {
-          consecutiveErrorsCounter += 1
-        } else {
-          consecutiveErrorsCounter = 0
-        }
-        if (consecutiveErrorsCounter < 3) {
-          val currentPair = Mapping(wordspair.source.toLowerCase(), wordspair.target.toLowerCase())
-          lineFrequencies(currentPair) = lineFrequencies.getOrElse(currentPair, 0) + 1
-        } else {
-          lineFrequencies.clear()
-        }
-      }
-    }
+      wordsWithSimilarity
+        .flatMap(wordSim => getLineMappings(wordsWithSimilarity))
 
-    lineFrequencies
-      .toSeq
-      .foreach { case(mapping, frequency) => frequencyDict(mapping) = frequencyDict.getOrElse(mapping, 0) + 1 }
+    } else {
+      Seq.empty[Mapping]
+    }
+    articleMapping
   }
 
-  def parseCorpus(frequencyDict: scala.collection.mutable.Map[Mapping, Int], source: File, target: File) = {
+  def parseCorpus(source: File, target: File): Iterator[Mapping] = {
     val (sourceLines, sourceLinesCopy) = Source.fromFile(source)(codec = Codec.UTF8).getLines().duplicate
     val (targetLines, targetLinesCopy) = Source.fromFile(target)(codec = Codec.UTF8).getLines().duplicate
     require(sourceLinesCopy.size == targetLinesCopy.size, "The corpora have different number of lines.")
 
     var counter = 0
-    sourceLines.zip(targetLines)
-      .foreach { case (sourceLine, targetLine) => {
+    val mappingsInCorpus: Iterator[Mapping] = sourceLines.zip(targetLines)
+      .flatMap { case (sourceLine, targetLine) => {
         counter += 1
         if (counter % 10000 == 0) {
           println(counter)
         }
         sourceLine.split('.').zip(targetLine.split('.'))
-          .foreach { case (sourceSentence, targetSentence) => parseLine(frequencyDict, sourceSentence, targetSentence) }
+          .flatMap { case (sourceSentence, targetSentence) => parseLine(sourceSentence, targetSentence)}
       }}
+    mappingsInCorpus
   }
-
 
   def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Map[String, Seq[WordAndFrequency]] = {
 
@@ -172,11 +176,13 @@ object SynonymMapper {
     val source2 = args(2)
     val target2 = args(3)
 
-    val frequencyMap = scala.collection.mutable.Map[Mapping, Int]()
-    parseCorpus(frequencyMap, new File(source1), new File(target1))
-    parseCorpus(frequencyMap, new File(source2), new File(target2))
+    val mappingsCorpus1 = parseCorpus(new File(source1), new File(target1))
+    val mappingsCorpus2 = parseCorpus(new File(source2), new File(target2))
+    val frequencyMap = (mappingsCorpus1 ++ mappingsCorpus2)
+      .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
+      .toMap
 
-    val collapsedMap = createSynonymsFromFrequencies(frequencyMap.toMap)
+    val collapsedMap = createSynonymsFromFrequencies(frequencyMap)
     val useExpansion = args.size > 5 && args(5) == "-e"
     writeSynonyms(collapsedMap, new File(args(4)), expansion = useExpansion)
   }
