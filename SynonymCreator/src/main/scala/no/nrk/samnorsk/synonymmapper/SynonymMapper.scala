@@ -51,20 +51,20 @@ object SynonymMapper {
   }
 
   def parseCorpus(frequencyDict: scala.collection.mutable.Map[Mapping, Int], source: File, target: File) = {
-    val sourceLines = Source.fromFile(source)(codec = Codec.UTF8).getLines()
-    val targetLines = Source.fromFile(target)(codec = Codec.UTF8).getLines()
+    val (sourceLines, sourceLinesCopy) = Source.fromFile(source)(codec = Codec.UTF8).getLines().duplicate
+    val (targetLines, targetLinesCopy) = Source.fromFile(target)(codec = Codec.UTF8).getLines().duplicate
+    require(sourceLinesCopy.size == targetLinesCopy.size, "The corpora have different number of lines.")
+
     var counter = 0
-    while(sourceLines.hasNext && targetLines.hasNext) {
-      counter += 1
-      if (counter % 10000 == 0) {
-        println(counter)
-      }
-      val sourceArticleLines = sourceLines.next().split('.').toIterator
-      val targetArticleLines = targetLines.next().split('.').toIterator
-      while (sourceArticleLines.hasNext && targetArticleLines.hasNext) {
-        parseLine(frequencyDict, sourceArticleLines.next(), targetArticleLines.next())
-      }
-    }
+    sourceLines.zip(targetLines)
+      .foreach { case (sourceLine, targetLine) => {
+        counter += 1
+        if (counter % 10000 == 0) {
+          println(counter)
+        }
+        sourceLine.split('.').zip(targetLine.split('.'))
+          .foreach { case (sourceSentence, targetSentence) => parseLine(frequencyDict, sourceSentence, targetSentence) }
+      }}
   }
 
 
@@ -96,9 +96,9 @@ object SynonymMapper {
       */
     val filteredAggregationMap: Map[String, Seq[WordAndFrequency]] = aggregateFrequencies(frequencyMap)
       .map { case (sourceword, wordsAndFrequencies) =>
-      val filtered = wordsAndFrequencies.filter(x => isMostFrequentTranslation(x.word, sourceword))
-      (sourceword, filtered)
-    }
+        val filtered = wordsAndFrequencies.filter(x => isMostFrequentTranslation(x.word, sourceword))
+        (sourceword, filtered)
+      }
 
     /**
       * Keep the synonym candidates which are frequent enough, compared to the most frequent mapping. Don't allow candidate words to
