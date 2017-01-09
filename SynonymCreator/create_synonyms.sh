@@ -39,7 +39,7 @@ case $key in
     shift # past argument
     ;;
     -e|--expansion)
-    REDUCTION="--expansion true"
+    EXPANSION="--expansion true"
     ;;
     *)
             # unknown option
@@ -56,4 +56,4 @@ fi
 
 export SBT_OPTS="-Xms4G -Xmx4G"
 
-sbt "run-main no.nrk.samnorsk.synonymmapper.SynonymMapper $SOURCE1 $TARGET1 $SOURCE2 $TARGET2 $OUTPUT $REDUCTION"
+sbt "run-main no.nrk.samnorsk.synonymmapper.SynonymMapper $SOURCE1 $TARGET1 $SOURCE2 $TARGET2 $OUTPUT $EXPANSION"
