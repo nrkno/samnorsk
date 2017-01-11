@@ -134,13 +134,11 @@ object WikiExtractor {
     }
 
     val options: Map[String, String] = parseOptions(Map(), args.toList)
-    require(options.contains("nynorsktobokmaal") && options.contains("bokmaaltonynorsk"), "Output dictionaries are not defined.")
-
-    var outputNnNb = new File(options("nynorsktobokmaal"))
-    var outputNbNn = new File(options("bokmaaltonynorsk"))
+    val outputNnNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to bokmaal dictionary is not defined")))
+    val outputNbNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to nynorsk dictionary is not defined")))
 
     val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
-    val bokmaalDump = resolveDump(options.get(Nynorsk.Name), Bokmaal)
+    val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
 
     println("Dumps resolved, starting translation")
 
