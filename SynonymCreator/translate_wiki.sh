@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
-export SBT_OPTS="-Xms4G -Xmx4G"
-
-
 programname=$0
 
 function usage {
-    echo "usage: $programname (-e) [--nynorsktranslation] [--bokmaaltranslation] ([--nynorsk-dump]) ([--bokmaal-dump])"
-    echo "	--nn-dump Wikipedia dump (Nynorsk)"
-    echo "	--nb-dump Wikipedia dump (Bokmaal)"
+    echo "usage: $programname (-e) [--nntrans] [--nbtrans] ([--nndump]) ([--nbdump])"
+    echo "	--nndump Wikipedia dump (gzip) for Nynorsk"
+    echo "	--nbdump Wikipedia dump (gzip) for Bokmaal"
     echo "	--nntrans output for translations from Nynorsk to Bokmaal"
     echo "	--nbtrans output for translations from Bokmaal to Nynorsk"
     exit 1
@@ -19,20 +16,20 @@ do
 key="$1"
 
 case $key in
-    --nn-dump)
-    NYNORSKDUMP="--nynorsk $2"
+    --nndump)
+    NYNORSKDUMP="--nndump $2"
     shift # past argument
     ;;
-    --nb-dump)
-    BOKMAALDUMP="--bokmaal $2"
+    --nbdump)
+    BOKMAALDUMP="--nbdump $2"
     shift # past argument
     ;;
     --nntrans)
-    NYNORSKTRANSLATION="--nynorsk-translation $2"
+    NYNORSKTRANSLATION="--nntrans $2"
     shift # past argument
     ;;
     --nbtrans)
-    BOKMAALTRANSLATION="--bokmaal-translation $2"
+    BOKMAALTRANSLATION="--nbtrans $2"
     shift # past argument
     ;;
     *)
@@ -48,6 +45,6 @@ then
     exit -1
 fi
 
-export SBT_OPTS="-Xms4G -Xmx4G"
+export SBT_OPTS="-Xms2G -Xmx2G"
 
 sbt "run-main no.nrk.samnorsk.wikiextractor.WikiExtractor $NYNORSKDUMP $BOKMAALDUMP $NYNORSKTRANSLATION $BOKMAALTRANSLATION"

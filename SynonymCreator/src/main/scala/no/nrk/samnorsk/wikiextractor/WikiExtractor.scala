@@ -1,8 +1,9 @@
 package no.nrk.samnorsk.wikiextractor
-import java.io.{File, FileInputStream, PrintWriter}
+import java.io.{File, FileInputStream}
+import java.lang.Thread.UncaughtExceptionHandler
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
+import java.nio.file.{Files, StandardOpenOption}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
@@ -32,14 +33,18 @@ object Bokmaal extends Language {
   override val Name: String = "nb"
 }
 
+class Counter {
+  private val counter = new AtomicInteger()
+  def next() = counter.incrementAndGet()
+}
+
 object ApertiumHelper {
 
-  val Counter = new AtomicInteger()
-  def translate(input: String, fromLanguage: Language, toLanguage: Language): String = {
+  def translate(input: String, fromLanguage: Language, toLanguage: Language, counter: Counter): String = {
     val tempInputFile = File.createTempFile("apertium-input", fromLanguage.Name)
     try {
       Files.write(tempInputFile.toPath, input.getBytes(StandardCharsets.UTF_8))
-      val chunkNumber = Counter.incrementAndGet()
+      val chunkNumber = counter.next()
       println(s"Started translating chunk $chunkNumber from ${fromLanguage.Name} to ${toLanguage.Name}")
       val trans = s"apertium ${fromLanguage.Aperitum}-${toLanguage.Aperitum} ${tempInputFile.getAbsolutePath}".!!.trim
       println(s"Done translating chunk $chunkNumber")
@@ -54,6 +59,7 @@ object WikiExtractor {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
+  case class ArticleAndTranslation(original: String, translation: String)
 
   val JsonMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   val DateRegex = """20[\d]{6}""".r
@@ -82,72 +88,90 @@ object WikiExtractor {
         val file = new File(dumpFile)
         require(file.exists(), s"$dumpFile does not exist.")
         file
-      case None => {
-        downloadLatest(language)
-      }
+      case None => downloadLatest(language)
     }
   }
 
-  def writeOutput(lines: Seq[String], outputFile: File) = {
-    managed(new PrintWriter(outputFile))
-      .acquireAndGet(writer => {
-        for (line <- lines) {
-          writer.write(line + "\n")
-        }
-        writer.write("\n")
-      })
+  def writeOutput(articles: Seq[ArticleAndTranslation], outputFile: File) = {
+    for (article <- articles) {
+      Files.write(outputFile.toPath, (JsonMapper.writeValueAsString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
+    }
   }
 
-  def translateDump(dump: File, fromLanguage: Language, toLanguage: Language): List[String] = {
-    val articles = managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
+  def translateDump(dump: File, fromLanguage: Language, toLanguage: Language, translationFile: File) = {
+
+    val counter = new Counter
+
+    def translateChunk(listOfArticles: Seq[String]) = {
+      listOfArticles
+        // Group articles to something reasonable to avoid initializing Apertium for each article.
+        .grouped(100)
+        // Apertium will remove \n, we use ☃☃¤ as a magic article separator.
+        .map(listOfArticles => listOfArticles.mkString("☃☃¤"))
+        .toSeq.par
+        .foreach(originalText => {
+          val translation = ApertiumHelper.translate(originalText, fromLanguage, toLanguage, counter)
+          val articles = originalText.split("☃☃¤").zip(translation.split("☃☃¤"))
+            .map(x => ArticleAndTranslation(x._1, x._2))
+          writeOutput(articles, translationFile)
+        })
+    }
+
+    managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
       .acquireAndGet(source => {
-        val lines = source.getLines()
+        source.getLines()
           .map(article => JsonMapper.readValue(article, classOf[Article]))
           .filter(x => x.text != null)
           .filter(_.text.length > 100)
           .map(article => article.text)
-        lines.toList
+          .grouped(10000)
+          .foreach(chunk => translateChunk(chunk))
       })
+  }
 
-    // Send reasonably sized chunks to Apertium. We don't want to send too small chunks due to initialization time.
-    val translations = articles.grouped(articles.size / Math.min(200, articles.size))
-      .map(listOfArticles => listOfArticles.mkString("☃☃¤"))
-      .toSeq.par.map(text => ApertiumHelper.translate(text, fromLanguage, toLanguage))
-      .flatMap(x => x.split("☃☃¤"))
-
-    translations.toList
+  def wipeAndCreateNewFile(file: File) = {
+    if (file.exists()) {
+      Files.delete(file.toPath)
+    }
+    file.createNewFile()
   }
 
   def main(args: Array[String]): Unit = {
+    Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
+      override def uncaughtException(t: Thread, e: Throwable): Unit = {
+        println(s"Uncaught exception, exiting. ${e.getMessage}")
+        sys.exit(1)
+      }
+    })
+
     type OptionMap = Map[String, String]
     def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
       list match {
         case Nil => map
-        case "--nynorsk" :: value :: tail =>
+        case "--nndump" :: value :: tail =>
           parseOptions(map ++ Map(Nynorsk.Name -> value), tail)
-        case "--bokmaal" :: value :: tail =>
+        case "--nbdump" :: value :: tail =>
           parseOptions(map ++ Map(Bokmaal.Name -> value), tail)
-        case "--nynorsk-translation" :: value :: tail =>
+        case "--nntrans" :: value :: tail =>
           parseOptions(map ++ Map("nynorsktobokmaal" -> value), tail)
-        case "--bokmaal-translation" :: value :: tail =>
+        case "--nbtrans" :: value :: tail =>
           parseOptions(map ++ Map("bokmaaltonynorsk" -> value), tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
 
     val options: Map[String, String] = parseOptions(Map(), args.toList)
-    val outputNnNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to Bokmaal dictionary is not defined")))
-    val outputNbNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to Nynorsk dictionary is not defined")))
+    val outputNnToNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to Bokmaal output file is not defined")))
+    val outputNbToNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to Nynorsk output file is not defined")))
+
+    wipeAndCreateNewFile(outputNnToNb)
+    wipeAndCreateNewFile(outputNbToNn)
 
     val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
     val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
 
     println("Dumps resolved, starting translation")
-
-    val transNnNB = translateDump(nynorskDump, Nynorsk, Bokmaal)
-    writeOutput(transNnNB, outputNnNb)
-
-    val transNbNn = translateDump(bokmaalDump, Bokmaal, Nynorsk)
-    writeOutput(transNbNn, outputNbNn)
+    translateDump(bokmaalDump, Bokmaal, Nynorsk, outputNbToNn)
+    translateDump(nynorskDump, Nynorsk, Bokmaal, outputNnToNb)
   }
 }
