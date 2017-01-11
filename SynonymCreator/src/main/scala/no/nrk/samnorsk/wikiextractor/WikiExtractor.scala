@@ -94,13 +94,14 @@ object WikiExtractor {
         for (line <- lines) {
           writer.write(line + "\n")
         }
+        writer.write("\n")
       })
   }
 
   def translateDump(dump: File, fromLanguage: Language, toLanguage: Language): List[String] = {
     val articles = managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
       .acquireAndGet(source => {
-        val lines = source.getLines().toSeq
+        val lines = source.getLines()
           .map(article => JsonMapper.readValue(article, classOf[Article]))
           .filter(x => x.text != null)
           .filter(_.text.length > 100)
@@ -109,7 +110,8 @@ object WikiExtractor {
       })
 
     // Send reasonably sized chunks to Apertium. We don't want to send too small chunks due to initialization time.
-    val translations = articles.grouped(articles.size / Math.min(200, articles.size)).map(listOfArticles => listOfArticles.mkString("☃☃¤"))
+    val translations = articles.grouped(articles.size / Math.min(200, articles.size))
+      .map(listOfArticles => listOfArticles.mkString("☃☃¤"))
       .toSeq.par.map(text => ApertiumHelper.translate(text, fromLanguage, toLanguage))
       .flatMap(x => x.split("☃☃¤"))
 
@@ -134,8 +136,8 @@ object WikiExtractor {
     }
 
     val options: Map[String, String] = parseOptions(Map(), args.toList)
-    val outputNnNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to bokmaal dictionary is not defined")))
-    val outputNbNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to nynorsk dictionary is not defined")))
+    val outputNnNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to Bokmaal dictionary is not defined")))
+    val outputNbNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to Nynorsk dictionary is not defined")))
 
     val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
     val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
