@@ -10,6 +10,7 @@ import java.util.zip.GZIPInputStream
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import epic.preprocess.MLSentenceSegmenter
 import resource._
 
 import scala.io.{Codec, Source}
@@ -31,6 +32,14 @@ object Bokmaal extends Language {
   override val Aperitum: String = "nob"
   override val Wiki: String = "no"
   override val Name: String = "nb"
+}
+
+object SentenceSegmenter {
+  val segmenter = MLSentenceSegmenter.bundled().get
+
+  def segment(text: String) : Seq[String] = {
+    segmenter(text).map(_.trim)
+  }
 }
 
 class Counter {
