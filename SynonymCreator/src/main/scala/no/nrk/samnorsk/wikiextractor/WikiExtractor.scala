@@ -103,7 +103,7 @@ object WikiExtractor {
 
     val counter = new Counter
 
-    def translateChunk(listOfArticles: Seq[String], fromLanguage: Language, toLanguage: Language) = {
+    def translateChunk(listOfArticles: Seq[String]) = {
       listOfArticles
         // Group articles to something reasonable to avoid initializing Apertium for each article.
         .grouped(100)
@@ -126,7 +126,7 @@ object WikiExtractor {
           .filter(_.text.length > 100)
           .map(article => article.text)
           .grouped(10000)
-          .foreach(chunk => translateChunk(chunk, fromLanguage, toLanguage))
+          .foreach(chunk => translateChunk(chunk))
       })
   }
 
