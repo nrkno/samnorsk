@@ -59,7 +59,7 @@ object WikiExtractor {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
-  case class ArticleAndTranslation(original: String, translation: String)
+  case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
 
   val JsonMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   val DateRegex = """20[\d]{6}""".r
@@ -102,7 +102,7 @@ object WikiExtractor {
 
     val counter = new Counter
 
-    def translateChunk(listOfArticles: Seq[String]) = {
+    def translateChunk(listOfArticles: Seq[String], fromLanguage: Language, toLanguage: Language) = {
       listOfArticles
         // Group articles to something reasonable to avoid initializing Apertium for each article.
         .grouped(100)
@@ -112,7 +112,7 @@ object WikiExtractor {
         .foreach(originalText => {
           val translation = ApertiumHelper.translate(originalText, fromLanguage, toLanguage, counter)
           val articles = originalText.split("☃☃¤").zip(translation.split("☃☃¤"))
-            .map(x => ArticleAndTranslation(x._1, x._2))
+            .map(x => ArticleAndTranslation(x._1, x._2, fromLanguage.Name, toLanguage.Name))
           writeOutput(articles, translationFile)
         })
     }
@@ -125,7 +125,7 @@ object WikiExtractor {
           .filter(_.text.length > 100)
           .map(article => article.text)
           .grouped(10000)
-          .foreach(chunk => translateChunk(chunk))
+          .foreach(chunk => translateChunk(chunk, fromLanguage, toLanguage))
       })
   }
 
@@ -152,26 +152,22 @@ object WikiExtractor {
           parseOptions(map ++ Map(Nynorsk.Name -> value), tail)
         case "--nbdump" :: value :: tail =>
           parseOptions(map ++ Map(Bokmaal.Name -> value), tail)
-        case "--nntrans" :: value :: tail =>
-          parseOptions(map ++ Map("nynorsktobokmaal" -> value), tail)
-        case "--nbtrans" :: value :: tail =>
-          parseOptions(map ++ Map("bokmaaltonynorsk" -> value), tail)
+        case "--trans" :: value :: tail =>
+          parseOptions(map ++ Map("trans" -> value), tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
 
     val options: Map[String, String] = parseOptions(Map(), args.toList)
-    val outputNnToNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to Bokmaal output file is not defined")))
-    val outputNbToNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to Nynorsk output file is not defined")))
+    val output = new File(options.getOrElse("trans", throw new IllegalArgumentException("Output file is not defined")))
 
-    wipeAndCreateNewFile(outputNnToNb)
-    wipeAndCreateNewFile(outputNbToNn)
+    wipeAndCreateNewFile(output)
 
     val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
     val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
 
     println("Dumps resolved, starting translation")
-    translateDump(bokmaalDump, Bokmaal, Nynorsk, outputNbToNn)
-    translateDump(nynorskDump, Nynorsk, Bokmaal, outputNnToNb)
+    translateDump(bokmaalDump, Bokmaal, Nynorsk, output)
+    translateDump(nynorskDump, Nynorsk, Bokmaal, output)
   }
 }
