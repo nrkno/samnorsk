@@ -8,8 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
 import resource._
 
 import scala.io.{Codec, Source}
@@ -61,7 +60,6 @@ object WikiExtractor {
   case class Article(text: String)
   case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
 
-  val JsonMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   val DateRegex = """20[\d]{6}""".r
 
   def downloadLatest(language: Language): File = {
@@ -94,7 +92,7 @@ object WikiExtractor {
 
   def writeOutput(articles: Seq[ArticleAndTranslation], outputFile: File) = {
     for (article <- articles) {
-      Files.write(outputFile.toPath, (JsonMapper.writeValueAsString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
+      Files.write(outputFile.toPath, (JsonWrapper.convertToString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
     }
   }
 
@@ -120,7 +118,7 @@ object WikiExtractor {
     managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
       .acquireAndGet(source => {
         source.getLines()
-          .map(article => JsonMapper.readValue(article, classOf[Article]))
+          .map(article => JsonWrapper.convert(article, classOf[Article]))
           .filter(x => x.text != null)
           .filter(_.text.length > 100)
           .map(article => article.text)
