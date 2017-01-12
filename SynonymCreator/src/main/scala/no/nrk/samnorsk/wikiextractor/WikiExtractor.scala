@@ -59,6 +59,7 @@ object WikiExtractor {
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
   case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
+  val writeLock = new Object()
 
   val DateRegex = """20[\d]{6}""".r
 
@@ -91,8 +92,10 @@ object WikiExtractor {
   }
 
   def writeOutput(articles: Seq[ArticleAndTranslation], outputFile: File) = {
-    for (article <- articles) {
-      Files.write(outputFile.toPath, (JsonWrapper.convertToString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
+    writeLock.synchronized {
+      for (article <- articles) {
+        Files.write(outputFile.toPath, (JsonWrapper.convertToString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
+      }
     }
   }
 

@@ -4,6 +4,9 @@ import java.io.{File, PrintWriter}
 import java.util.concurrent.atomic.AtomicInteger
 
 import info.debatty.java.stringsimilarity.JaroWinkler
+import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
+import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
+import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -45,9 +48,9 @@ object SynonymMapper {
     val sentenceMapping = if (sourceTokens.size == targetTokens.size) {
       val mappings: Seq[Mapping] = sourceTokens.zip(targetTokens)
 
-          // Words out of voc have been annotated with * prefix.
-          .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
-          .map { case (sourceWord, targetWord) => Mapping(sourceWord.toLowerCase, targetWord.toLowerCase) }
+        // Words out of voc have been annotated with * prefix.
+        .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
+        .map { case (sourceWord, targetWord) => Mapping(sourceWord.toLowerCase, targetWord.toLowerCase) }
 
       getSentenceMappingRec(mappings, 0, Seq())
     } else {
@@ -56,24 +59,21 @@ object SynonymMapper {
     sentenceMapping
   }
 
-  def getCorpusMapping(source: File, target: File) = {
-    require(Source.fromFile(source)(codec = Codec.UTF8).getLines().size == Source.fromFile(target)(codec = Codec.UTF8).getLines().size,
-      "The corpora have different number of lines.")
-    val sourceLines = Source.fromFile(source)(codec = Codec.UTF8).getLines()
-    val targetLines = Source.fromFile(target)(codec = Codec.UTF8).getLines()
+  def getCorpusMapping(translations: File) = {
 
-    // Process articles in parallel in batches of 1000.
-    val mappingsInCorpus = sourceLines.zip(targetLines).grouped(1000).flatMap(group => {
-      group.par.flatMap { case (sourceArticle, targetArticle) =>
-        val articlesProcessed = Counter.incrementAndGet()
-        if (articlesProcessed % 10000 == 0) {
-          println(s"Processed $articlesProcessed articles")
+    val mappings = Source.fromFile(translations)(codec = Codec.UTF8).getLines()
+      .map(line => JsonWrapper.convert(line, classOf[ArticleAndTranslation]))
+      .grouped(1000).flatMap(group => {
+      group.par.flatMap(article => {
+        val sentenceMappings = article match {
+          case article if article.fromLanguage == Nynorsk.Name => getSentenceMapping(article.original, article.translation)
+          case article if article.fromLanguage == Bokmaal.Name => getSentenceMapping(article.translation, article.original)
+          case _ => throw new IllegalArgumentException("Invalid input")
         }
-        sourceArticle.split('.').zip(targetArticle.split('.'))
-          .flatMap { case (sourceSentence, targetSentence) => getSentenceMapping(sourceSentence, targetSentence)}
-      }
+        sentenceMappings
+      })
     })
-    mappingsInCorpus
+    mappings
   }
 
   def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Map[String, Seq[WordAndFrequency]] = {
@@ -179,42 +179,34 @@ object SynonymMapper {
     def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
       list match {
         case Nil => map
-        case "--source1" :: value :: tail =>
-          parseOptions(map ++ Map('source1 -> value), tail)
-        case "--source2" :: value :: tail =>
-          parseOptions(map ++ Map('source2 -> value), tail)
-        case "--target1" :: value :: tail =>
-          parseOptions(map ++ Map('target1 -> value), tail)
-        case "--target2" :: value :: tail =>
-          parseOptions(map ++ Map('target2 -> value), tail)
+        case "--trans" :: value :: tail =>
+          parseOptions(map ++ Map('trans -> value), tail)
         case "--output" :: value :: tail =>
           parseOptions(map ++ Map('output -> value), tail)
-        case "--expansion" :: value :: tail =>
-          parseOptions(map ++ Map('expansion -> value), tail)
+        case "--reduction" :: value :: tail =>
+          parseOptions(map ++ Map('reduction -> value), tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
     val options: Map[Symbol, String] = parseOptions(Map(), args.toList)
-    require(options.contains('output), "Output dictionary is not defined.")
+    val input = options.getOrElse('trans, "Input translations are not defined.")
+    val output = options.getOrElse('output, "Input translations are not defined.")
 
-    def getMappingsForInput(options: OptionMap, source: Symbol, target: Symbol) = {
-      val mappings: Option[Iterator[Mapping]] = for {
-        sourceFile <- options.get(source)
-        targetFile <- options.get(target)
-      } yield getCorpusMapping(new File(sourceFile), new File(targetFile))
-      mappings.getOrElse(Iterator.empty)
-    }
+    val reductionLanguage = options.get('reduction)
 
-    val mappingsCorpus1 = getMappingsForInput(options, 'source1, 'target1)
-    val mappingsCorpus2 = getMappingsForInput(options, 'source2, 'target2)
-    val outputFile = new File(options('output))
-    val isExpansion = options.getOrElse('expansion, "false").toBoolean
+    val mappings = getCorpusMapping(new File(input))
+      .map(mapping => {
+        reductionLanguage match {
+          case Some(language) if language == Bokmaal.Name => Mapping(mapping.target, mapping.source)
+          case _ => mapping
+        }
+      })
 
-    val frequencyMap = (mappingsCorpus1 ++ mappingsCorpus2)
+    val frequencyMap = mappings
       .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
       .toMap
 
     val collapsedMap = createSynonymsFromFrequencies(frequencyMap)
-    writeSynonyms(collapsedMap, outputFile, expansion = isExpansion)
+    writeSynonyms(collapsedMap, new File(output), expansion = reductionLanguage.isEmpty)
   }
 }
