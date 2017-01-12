@@ -1,6 +1,7 @@
 package no.nrk.samnorsk.synonymmapper
 
 import java.io.{File, PrintWriter}
+import java.lang.Thread.UncaughtExceptionHandler
 import java.util.concurrent.atomic.AtomicInteger
 
 import info.debatty.java.stringsimilarity.JaroWinkler
@@ -174,6 +175,12 @@ object SynonymMapper {
   }
 
   def main(args: Array[String]): Unit = {
+    Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
+      override def uncaughtException(t: Thread, e: Throwable): Unit = {
+        println(s"Uncaught exception, exiting. ${e.getMessage}")
+        sys.exit(1)
+      }
+    })
 
     type OptionMap = Map[Symbol, String]
     def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
