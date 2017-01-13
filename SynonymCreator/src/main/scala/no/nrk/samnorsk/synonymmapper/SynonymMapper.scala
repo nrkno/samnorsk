@@ -82,8 +82,8 @@ object SynonymMapper {
       .grouped(1000).flatMap(group => {
       group.par.flatMap(article => {
         val sentenceMappings = article match {
-          case article if article.fromLanguage == Nynorsk.Name => getArticleMappings(article.original, article.translation)
-          case article if article.fromLanguage == Bokmaal.Name => getArticleMappings(article.translation, article.original)
+          case wikiArticle if wikiArticle.fromLanguage == Nynorsk.Name => getArticleMappings(wikiArticle.original, wikiArticle.translation)
+          case wikiArticle if wikiArticle.fromLanguage == Bokmaal.Name => getArticleMappings(wikiArticle.translation, wikiArticle.original)
           case _ => throw new IllegalArgumentException("Invalid input")
         }
         sentenceMappings
