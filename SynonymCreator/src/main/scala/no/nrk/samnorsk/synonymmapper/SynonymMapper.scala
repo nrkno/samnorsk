@@ -2,7 +2,6 @@ package no.nrk.samnorsk.synonymmapper
 
 import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
-import java.util.concurrent.atomic.AtomicInteger
 
 import info.debatty.java.stringsimilarity.JaroWinkler
 import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
@@ -15,7 +14,6 @@ import scala.io.{Codec, Source}
 
 object SynonymMapper {
 
-  val Counter = new AtomicInteger()
   case class Mapping(source: String, target: String)
   case class WordAndFrequency(word: String, mappingFrequency: Int)
 
