@@ -59,7 +59,6 @@ object WikiExtractor {
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
   case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
-  val writeLock = new Object()
 
   val DateRegex = """20[\d]{6}""".r
 
@@ -106,7 +105,7 @@ object WikiExtractor {
           val translation = ApertiumHelper.translate(originalText, fromLanguage, toLanguage, counter)
           val articles = originalText.split("☃☃¤").zip(translation.split("☃☃¤"))
             .map(x => ArticleAndTranslation(x._1, x._2, fromLanguage.Name, toLanguage.Name))
-           IOUtils.writeOutput(articles, translationFile, writeLock)
+           IOUtils.writeOutput(articles, translationFile)
         })
     }
 

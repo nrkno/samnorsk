@@ -14,8 +14,8 @@ object IOUtils {
     file.createNewFile()
   }
 
-  def writeOutput[T](lines: Seq[T], outputFile: File, writeLock: Object) = {
-    writeLock.synchronized {
+  def writeOutput[T](lines: Seq[T], outputFile: File) = {
+    outputFile.synchronized {
       for (article <- lines) {
         Files.write(outputFile.toPath, (JsonWrapper.convertToString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
       }

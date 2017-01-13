@@ -165,11 +165,10 @@ object SynonymMapper {
   }
 
   def writeSynonyms(synonymLines: Seq[SynonymLine], output: File, expansion: Boolean) = {
-    val writeLock = new Object()
     IOUtils.wipeAndCreateNewFile(output)
     synonymLines.map(x => if (expansion) x.getExpansionSynonyms else x.getReductionSynonyms)
       .grouped(1000)
-      .foreach(lines => IOUtils.writeOutput(lines, output, writeLock))
+      .foreach(lines => IOUtils.writeOutput(lines, output))
   }
 
   def main(args: Array[String]): Unit = {
