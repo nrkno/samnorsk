@@ -1,11 +1,11 @@
 package no.nrk.samnorsk.synonymmapper
 
-import java.io.{File, PrintWriter}
+import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
 import java.util.concurrent.atomic.AtomicInteger
 
 import info.debatty.java.stringsimilarity.JaroWinkler
-import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
+import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
 
@@ -18,6 +18,17 @@ object SynonymMapper {
   val Counter = new AtomicInteger()
   case class Mapping(source: String, target: String)
   case class WordAndFrequency(word: String, mappingFrequency: Int)
+
+  case class SynonymLine(synonyms: Seq[String], canonicalForm: String) {
+
+    def getReductionSynonyms = {
+      synonyms.mkString("", ",", " => ") + canonicalForm
+    }
+
+    def getExpansionSynonyms = {
+      (synonyms :+ canonicalForm).mkString(",")
+    }
+  }
 
   val TokenizerRegex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
   val JaroWinler = new JaroWinkler()
@@ -77,7 +88,7 @@ object SynonymMapper {
     mappings
   }
 
-  def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Map[String, Seq[WordAndFrequency]] = {
+  def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Seq[SynonymLine] = {
 
     def aggregateFrequencies(frequencyMap: Map[Mapping, Int], cutoff: Int = 5): Map[String, Seq[WordAndFrequency]] = {
 
@@ -146,32 +157,19 @@ object SynonymMapper {
 
         (sourceWord, (mappingsWithHighFrequencies ++ getReverseMappedSynonyms(sourceWord)).distinct)
       }
-    synonyms
+
+    synonyms.map(x => SynonymLine(x._2.map(_.word), x._1))
+      .map(synonymLine => SynonymLine(synonymLine.synonyms.filter(x => x != synonymLine.canonicalForm).distinct, synonymLine.canonicalForm))
+      .filter(synonymLine => synonymLine.synonyms.nonEmpty)
+      .toSeq
   }
 
-  def writeSynonyms(collapsedMap: Map[String, Seq[WordAndFrequency]], output: File, expansion: Boolean) = {
-    val pw = new PrintWriter(output)
-
-    val removedDuplicates = collapsedMap
-      .map { case (sourceWord, wordsAndFreqs) =>
-        (sourceWord, wordsAndFreqs.filter(x => x.word != sourceWord))
-      }
-      .filter { case (_, wordsAndFreqs) => wordsAndFreqs.nonEmpty }
-
-    for (translation <- removedDuplicates) {
-      val targetWords = translation._2
-      for (i <- targetWords.indices) {
-        pw.write(targetWords(i).word)
-        if (i == targetWords.size - 1 && !expansion) {
-          pw.write(" => ")
-        } else {
-          pw.write(",")
-        }
-      }
-      pw.write(translation._1)
-      pw.write('\n')
-    }
-    pw.close()
+  def writeSynonyms(synonymLines: Seq[SynonymLine], output: File, expansion: Boolean) = {
+    val writeLock = new Object()
+    IOUtils.wipeAndCreateNewFile(output)
+    synonymLines.map(x => if (expansion) x.getExpansionSynonyms else x.getReductionSynonyms)
+      .grouped(1000)
+      .foreach(lines => IOUtils.writeOutput(lines, output, writeLock))
   }
 
   def main(args: Array[String]): Unit = {
@@ -213,7 +211,7 @@ object SynonymMapper {
       .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
       .toMap
 
-    val collapsedMap = createSynonymsFromFrequencies(frequencyMap)
-    writeSynonyms(collapsedMap, new File(output), expansion = reductionLanguage.isEmpty)
+    val synonyms = createSynonymsFromFrequencies(frequencyMap)
+    writeSynonyms(synonyms, new File(output), expansion = reductionLanguage.isEmpty)
   }
 }

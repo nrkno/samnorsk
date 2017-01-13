@@ -15,7 +15,7 @@ object JsonWrapper {
     * Convert object to valid string json representation.
     */
   def convertToString[T](input: T): String = {
-    mapper.writeValueAsString(input)
+    if (input.isInstanceOf[String]) input.asInstanceOf[String] else mapper.writeValueAsString(input)
   }
 
   /**
