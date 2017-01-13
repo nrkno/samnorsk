@@ -3,12 +3,12 @@ import java.io.{File, FileInputStream}
 import java.lang.Thread.UncaughtExceptionHandler
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, StandardOpenOption}
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
+import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import resource._
 
 import scala.io.{Codec, Source}
@@ -91,14 +91,6 @@ object WikiExtractor {
     }
   }
 
-  def writeOutput(articles: Seq[ArticleAndTranslation], outputFile: File) = {
-    writeLock.synchronized {
-      for (article <- articles) {
-        Files.write(outputFile.toPath, (JsonWrapper.convertToString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
-      }
-    }
-  }
-
   def translateDump(dump: File, fromLanguage: Language, toLanguage: Language, translationFile: File) = {
 
     val counter = new Counter
@@ -114,7 +106,7 @@ object WikiExtractor {
           val translation = ApertiumHelper.translate(originalText, fromLanguage, toLanguage, counter)
           val articles = originalText.split("☃☃¤").zip(translation.split("☃☃¤"))
             .map(x => ArticleAndTranslation(x._1, x._2, fromLanguage.Name, toLanguage.Name))
-          writeOutput(articles, translationFile)
+           IOUtils.writeOutput(articles, translationFile, writeLock)
         })
     }
 
