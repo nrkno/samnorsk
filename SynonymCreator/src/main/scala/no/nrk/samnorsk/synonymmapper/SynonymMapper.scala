@@ -33,7 +33,7 @@ object SynonymMapper {
   val TokenizerRegex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
   val JaroWinler = new JaroWinkler()
 
-  def getSentenceMapping(sourceSentence: String, targetSentence: String): Seq[Mapping] = {
+  def getArticleMappings(nynorskArticle: String, bokmaalArticle: String): Seq[Mapping] = {
 
     @tailrec
     def getSentenceMappingRec(mappingsQueue: Seq[Mapping], consecutiveDissimilarities: Int, mappingFinished: Seq[Mapping]): Seq[Mapping] = {
@@ -54,21 +54,27 @@ object SynonymMapper {
       }
     }
 
-    val sourceTokens = TokenizerRegex.findAllIn(sourceSentence).toSeq
-    val targetTokens = TokenizerRegex.findAllIn(targetSentence).toSeq
+    val nynorskSentences = nynorskArticle.split("\\.")
+    val bokmaalSentences = bokmaalArticle.split("\\.")
 
-    val sentenceMapping = if (sourceTokens.size == targetTokens.size) {
-      val mappings: Seq[Mapping] = sourceTokens.zip(targetTokens)
+    val mappingsInArticle = nynorskSentences.zip(bokmaalSentences).flatMap { case (nynorskSentence, bokmaalSentence) =>
+      val nynorskTokens = TokenizerRegex.findAllIn(nynorskSentence).toSeq
+      val bokmaalTokens = TokenizerRegex.findAllIn(bokmaalSentence).toSeq
 
-        // Words out of voc have been annotated with * prefix.
-        .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
-        .map { case (sourceWord, targetWord) => Mapping(sourceWord.toLowerCase, targetWord.toLowerCase) }
+      val sentenceMapping = if (nynorskTokens.size == bokmaalTokens.size) {
+        val mappings: Seq[Mapping] = nynorskTokens.zip(bokmaalTokens)
 
-      getSentenceMappingRec(mappings, 0, Seq())
-    } else {
-      Seq()
+          // Words out of voc have been annotated with * prefix.
+          .filter { case (nynorskWord, bokmaalWord) => !nynorskWord.contains('*') && !bokmaalWord.contains('*') }
+          .map { case (nynorskWord, bokmaalWord) => Mapping(nynorskWord.toLowerCase, bokmaalWord.toLowerCase) }
+
+        getSentenceMappingRec(mappings, 0, Seq())
+      } else {
+        Seq()
+      }
+      sentenceMapping
     }
-    sentenceMapping
+    mappingsInArticle
   }
 
   def getCorpusMapping(translations: File) = {
@@ -78,8 +84,8 @@ object SynonymMapper {
       .grouped(1000).flatMap(group => {
       group.par.flatMap(article => {
         val sentenceMappings = article match {
-          case article if article.fromLanguage == Nynorsk.Name => getSentenceMapping(article.original, article.translation)
-          case article if article.fromLanguage == Bokmaal.Name => getSentenceMapping(article.translation, article.original)
+          case article if article.fromLanguage == Nynorsk.Name => getArticleMappings(article.original, article.translation)
+          case article if article.fromLanguage == Bokmaal.Name => getArticleMappings(article.translation, article.original)
           case _ => throw new IllegalArgumentException("Invalid input")
         }
         sentenceMappings
