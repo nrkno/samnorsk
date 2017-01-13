@@ -3,7 +3,7 @@
 programname=$0
 
 function usage {
-    echo "usage: $programname (-e) [--trans] [--output] ([--reduction])"
+    echo "usage: $programname [--trans] [--output] ([--reduction])"
     echo "	--trans input translations"
     echo "	--output dictionary output file"
     echo "	--reduction reduction to language (nb or nn)"
