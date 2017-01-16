@@ -1,9 +1,36 @@
 package no.nrk.samnorsk.wikiextractor
 
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path}
+
+import scala.sys.process._
 import scala.util.matching.Regex
 
 trait ApertiumRunner {
   def translate(text: String): String
+}
+
+// not tested, may not work
+class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends ApertiumRunner {
+  override def translate(text: String): String = {
+    val tempFile = File.createTempFile("apertium-input", fromLanguage)
+
+    try {
+      Files.write(tempFile.toPath, text.getBytes(StandardCharsets.UTF_8))
+      s"apertium $fromLanguage-$toLanguage ${tempFile.getAbsolutePath}".!!.trim
+    } finally {
+      Files.delete(tempFile.toPath)
+    }
+  }
+}
+
+// not tested, may not work
+class RemoteApertiumRunner(fromLanguage: String, toLanguage: String, user: String, server: String, keyFile: Path)
+  extends ApertiumRunner {
+  override def translate(text: String): String = {
+    s"ssh $user@$server \"echo \\\"$text\\\" | apertium $fromLanguage-$toLanguage\"".!!.trim
+  }
 }
 
 class StubApertiumRunner(substitutions: Map[String, String]) extends ApertiumRunner {
