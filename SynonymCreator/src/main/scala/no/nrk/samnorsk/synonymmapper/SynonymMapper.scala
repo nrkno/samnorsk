@@ -1,9 +1,12 @@
 package no.nrk.samnorsk.synonymmapper
 
-import java.io.{File, PrintWriter}
-import java.util.concurrent.atomic.AtomicInteger
+import java.io._
+import java.lang.Thread.UncaughtExceptionHandler
 
 import info.debatty.java.stringsimilarity.JaroWinkler
+import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
+import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
+import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -11,14 +14,24 @@ import scala.io.{Codec, Source}
 
 object SynonymMapper {
 
-  val Counter = new AtomicInteger()
   case class Mapping(source: String, target: String)
   case class WordAndFrequency(word: String, mappingFrequency: Int)
+
+  case class SynonymLine(synonyms: Seq[String], canonicalForm: String) {
+
+    def getReductionSynonyms = {
+      synonyms.mkString("", ",", " => ") + canonicalForm
+    }
+
+    def getExpansionSynonyms = {
+      (synonyms :+ canonicalForm).mkString(",")
+    }
+  }
 
   val TokenizerRegex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
   val JaroWinler = new JaroWinkler()
 
-  def getSentenceMapping(sourceSentence: String, targetSentence: String): Seq[Mapping] = {
+  def getArticleMappings(nynorskArticle: String, bokmaalArticle: String): Seq[Mapping] = {
 
     @tailrec
     def getSentenceMappingRec(mappingsQueue: Seq[Mapping], consecutiveDissimilarities: Int, mappingFinished: Seq[Mapping]): Seq[Mapping] = {
@@ -39,44 +52,47 @@ object SynonymMapper {
       }
     }
 
-    val sourceTokens = TokenizerRegex.findAllIn(sourceSentence).toSeq
-    val targetTokens = TokenizerRegex.findAllIn(targetSentence).toSeq
+    val nynorskSentences = nynorskArticle.split("\\.")
+    val bokmaalSentences = bokmaalArticle.split("\\.")
 
-    val sentenceMapping = if (sourceTokens.size == targetTokens.size) {
-      val mappings: Seq[Mapping] = sourceTokens.zip(targetTokens)
+    val mappingsInArticle = nynorskSentences.zip(bokmaalSentences).flatMap { case (nynorskSentence, bokmaalSentence) =>
+      val nynorskTokens = TokenizerRegex.findAllIn(nynorskSentence).toSeq
+      val bokmaalTokens = TokenizerRegex.findAllIn(bokmaalSentence).toSeq
+
+      val sentenceMapping = if (nynorskTokens.size == bokmaalTokens.size) {
+        val mappings: Seq[Mapping] = nynorskTokens.zip(bokmaalTokens)
 
           // Words out of voc have been annotated with * prefix.
-          .filter { case (sourceWord, targetWord) => !sourceWord.contains('*') && !targetWord.contains('*') }
-          .map { case (sourceWord, targetWord) => Mapping(sourceWord.toLowerCase, targetWord.toLowerCase) }
+          .filter { case (nynorskWord, bokmaalWord) => !nynorskWord.contains('*') && !bokmaalWord.contains('*') }
+          .map { case (nynorskWord, bokmaalWord) => Mapping(nynorskWord.toLowerCase, bokmaalWord.toLowerCase) }
 
-      getSentenceMappingRec(mappings, 0, Seq())
-    } else {
-      Seq()
-    }
-    sentenceMapping
-  }
-
-  def getCorpusMapping(source: File, target: File) = {
-    require(Source.fromFile(source)(codec = Codec.UTF8).getLines().size == Source.fromFile(target)(codec = Codec.UTF8).getLines().size,
-      "The corpora have different number of lines.")
-    val sourceLines = Source.fromFile(source)(codec = Codec.UTF8).getLines()
-    val targetLines = Source.fromFile(target)(codec = Codec.UTF8).getLines()
-
-    // Process articles in parallel in batches of 1000.
-    val mappingsInCorpus = sourceLines.zip(targetLines).grouped(1000).flatMap(group => {
-      group.par.flatMap { case (sourceArticle, targetArticle) =>
-        val articlesProcessed = Counter.incrementAndGet()
-        if (articlesProcessed % 10000 == 0) {
-          println(s"Processed $articlesProcessed articles")
-        }
-        sourceArticle.split('.').zip(targetArticle.split('.'))
-          .flatMap { case (sourceSentence, targetSentence) => getSentenceMapping(sourceSentence, targetSentence)}
+        getSentenceMappingRec(mappings, 0, Seq())
+      } else {
+        Seq()
       }
-    })
-    mappingsInCorpus
+      sentenceMapping
+    }
+    mappingsInArticle
   }
 
-  def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Map[String, Seq[WordAndFrequency]] = {
+  def getCorpusMapping(translations: File) = {
+
+    val mappings = Source.fromFile(translations)(codec = Codec.UTF8).getLines()
+      .map(line => JsonWrapper.convert(line, classOf[ArticleAndTranslation]))
+      .grouped(1000).flatMap(group => {
+      group.par.flatMap(article => {
+        val sentenceMappings = article match {
+          case wikiArticle if wikiArticle.fromLanguage == Nynorsk.Name => getArticleMappings(wikiArticle.original, wikiArticle.translation)
+          case wikiArticle if wikiArticle.fromLanguage == Bokmaal.Name => getArticleMappings(wikiArticle.translation, wikiArticle.original)
+          case _ => throw new IllegalArgumentException("Invalid input")
+        }
+        sentenceMappings
+      })
+    })
+    mappings
+  }
+
+  def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Seq[SynonymLine] = {
 
     def aggregateFrequencies(frequencyMap: Map[Mapping, Int], cutoff: Int = 5): Map[String, Seq[WordAndFrequency]] = {
 
@@ -145,76 +161,60 @@ object SynonymMapper {
 
         (sourceWord, (mappingsWithHighFrequencies ++ getReverseMappedSynonyms(sourceWord)).distinct)
       }
-    synonyms
+
+    synonyms.map(x => SynonymLine(x._2.map(_.word), x._1))
+      .map(synonymLine => SynonymLine(synonymLine.synonyms.filter(x => x != synonymLine.canonicalForm).distinct, synonymLine.canonicalForm))
+      .filter(synonymLine => synonymLine.synonyms.nonEmpty)
+      .toSeq
   }
 
-  def writeSynonyms(collapsedMap: Map[String, Seq[WordAndFrequency]], output: File, expansion: Boolean) = {
-    val pw = new PrintWriter(output)
-
-    val removedDuplicates = collapsedMap
-      .map { case (sourceWord, wordsAndFreqs) =>
-        (sourceWord, wordsAndFreqs.filter(x => x.word != sourceWord))
-      }
-      .filter { case (_, wordsAndFreqs) => wordsAndFreqs.nonEmpty }
-
-    for (translation <- removedDuplicates) {
-      val targetWords = translation._2
-      for (i <- targetWords.indices) {
-        pw.write(targetWords(i).word)
-        if (i == targetWords.size - 1 && !expansion) {
-          pw.write(" => ")
-        } else {
-          pw.write(",")
-        }
-      }
-      pw.write(translation._1)
-      pw.write('\n')
-    }
-    pw.close()
+  def writeSynonyms(synonymLines: Seq[SynonymLine], output: File, expansion: Boolean) = {
+    IOUtils.wipeAndCreateNewFile(output)
+    synonymLines.map(x => if (expansion) x.getExpansionSynonyms else x.getReductionSynonyms)
+      .grouped(1000)
+      .foreach(lines => IOUtils.writeOutput(lines, output))
   }
 
   def main(args: Array[String]): Unit = {
+    Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
+      override def uncaughtException(t: Thread, e: Throwable): Unit = {
+        println(s"Uncaught exception, exiting. ${e.getMessage}")
+        sys.exit(1)
+      }
+    })
 
     type OptionMap = Map[Symbol, String]
     def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
       list match {
         case Nil => map
-        case "--source1" :: value :: tail =>
-          parseOptions(map ++ Map('source1 -> value), tail)
-        case "--source2" :: value :: tail =>
-          parseOptions(map ++ Map('source2 -> value), tail)
-        case "--target1" :: value :: tail =>
-          parseOptions(map ++ Map('target1 -> value), tail)
-        case "--target2" :: value :: tail =>
-          parseOptions(map ++ Map('target2 -> value), tail)
+        case "--trans" :: value :: tail =>
+          parseOptions(map ++ Map('trans -> value), tail)
         case "--output" :: value :: tail =>
           parseOptions(map ++ Map('output -> value), tail)
-        case "--expansion" :: value :: tail =>
-          parseOptions(map ++ Map('expansion -> value), tail)
+        case "--reduction" :: value :: tail =>
+          parseOptions(map ++ Map('reduction -> value), tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
     val options: Map[Symbol, String] = parseOptions(Map(), args.toList)
-    require(options.contains('output), "Output dictionary is not defined.")
+    val input = options.getOrElse('trans, "Input translations are not defined.")
+    val output = options.getOrElse('output, "Input translations are not defined.")
 
-    def getMappingsForInput(options: OptionMap, source: Symbol, target: Symbol) = {
-      val mappings: Option[Iterator[Mapping]] = for {
-        sourceFile <- options.get(source)
-        targetFile <- options.get(target)
-      } yield getCorpusMapping(new File(sourceFile), new File(targetFile))
-      mappings.getOrElse(Iterator.empty)
-    }
+    val reductionLanguage = options.get('reduction)
 
-    val mappingsCorpus1 = getMappingsForInput(options, 'source1, 'target1)
-    val mappingsCorpus2 = getMappingsForInput(options, 'source2, 'target2)
-    val outputFile = new File(options('output))
-    val isExpansion = options.getOrElse('expansion, "false").toBoolean
+    val mappings = getCorpusMapping(new File(input))
+      .map(mapping => {
+        reductionLanguage match {
+          case Some(language) if language == Bokmaal.Name => Mapping(mapping.target, mapping.source)
+          case _ => mapping
+        }
+      })
 
-    val frequencyMap = (mappingsCorpus1 ++ mappingsCorpus2)
+    val frequencyMap = mappings
       .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
       .toMap
 
-    val collapsedMap = createSynonymsFromFrequencies(frequencyMap)
-    writeSynonyms(collapsedMap, outputFile, expansion = isExpansion)
+    val synonyms = createSynonymsFromFrequencies(frequencyMap)
+    writeSynonyms(synonyms, new File(output), expansion = reductionLanguage.isEmpty)
   }
 }

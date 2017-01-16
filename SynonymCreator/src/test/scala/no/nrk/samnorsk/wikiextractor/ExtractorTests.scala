@@ -2,8 +2,7 @@ package no.nrk.samnorsk.wikiextractor
 
 import java.io.File
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import org.scalatest.FlatSpec
 
@@ -17,7 +16,7 @@ class ExtractorTests extends FlatSpec {
 
   val outputTranslation = Source.fromFile(outputFile).getLines().toSeq
   assert(outputTranslation.size == 50)
-  val articleAndTrans = new ObjectMapper().registerModule(DefaultScalaModule).readValue(outputTranslation.head, classOf[ArticleAndTranslation])
+  val articleAndTrans = JsonWrapper.convert(outputTranslation.head, classOf[ArticleAndTranslation])
   assert(articleAndTrans.translation.startsWith("*Wasit er en landsby øst i *Jemen."))
   assert(articleAndTrans.original.startsWith("Wasit er ein landsby aust i Jemen."))
 }

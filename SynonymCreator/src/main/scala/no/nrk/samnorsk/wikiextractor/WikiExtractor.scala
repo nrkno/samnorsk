@@ -3,14 +3,13 @@ import java.io.{File, FileInputStream}
 import java.lang.Thread.UncaughtExceptionHandler
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, StandardOpenOption}
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import epic.preprocess.MLSentenceSegmenter
+import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import resource._
 
 import scala.io.{Codec, Source}
@@ -68,9 +67,8 @@ object WikiExtractor {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
-  case class ArticleAndTranslation(original: String, translation: String)
+  case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
 
-  val JsonMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   val DateRegex = """20[\d]{6}""".r
 
   def downloadLatest(language: Language): File = {
@@ -101,12 +99,6 @@ object WikiExtractor {
     }
   }
 
-  def writeOutput(articles: Seq[ArticleAndTranslation], outputFile: File) = {
-    for (article <- articles) {
-      Files.write(outputFile.toPath, (JsonMapper.writeValueAsString(article) + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND)
-    }
-  }
-
   def translateDump(dump: File, fromLanguage: Language, toLanguage: Language, translationFile: File) = {
 
     val counter = new Counter
@@ -121,15 +113,15 @@ object WikiExtractor {
         .foreach(originalText => {
           val translation = ApertiumHelper.translate(originalText, fromLanguage, toLanguage, counter)
           val articles = originalText.split("☃☃¤").zip(translation.split("☃☃¤"))
-            .map(x => ArticleAndTranslation(x._1, x._2))
-          writeOutput(articles, translationFile)
+            .map(x => ArticleAndTranslation(x._1, x._2, fromLanguage.Name, toLanguage.Name))
+           IOUtils.writeOutput(articles, translationFile)
         })
     }
 
     managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
       .acquireAndGet(source => {
         source.getLines()
-          .map(article => JsonMapper.readValue(article, classOf[Article]))
+          .map(article => JsonWrapper.convert(article, classOf[Article]))
           .filter(x => x.text != null)
           .filter(_.text.length > 100)
           .map(article => article.text)
@@ -161,26 +153,22 @@ object WikiExtractor {
           parseOptions(map ++ Map(Nynorsk.Name -> value), tail)
         case "--nbdump" :: value :: tail =>
           parseOptions(map ++ Map(Bokmaal.Name -> value), tail)
-        case "--nntrans" :: value :: tail =>
-          parseOptions(map ++ Map("nynorsktobokmaal" -> value), tail)
-        case "--nbtrans" :: value :: tail =>
-          parseOptions(map ++ Map("bokmaaltonynorsk" -> value), tail)
+        case "--trans" :: value :: tail =>
+          parseOptions(map ++ Map("trans" -> value), tail)
         case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
       }
     }
 
     val options: Map[String, String] = parseOptions(Map(), args.toList)
-    val outputNnToNb = new File(options.getOrElse("nynorsktobokmaal", throw new IllegalArgumentException("Nynorsk to Bokmaal output file is not defined")))
-    val outputNbToNn = new File(options.getOrElse("bokmaaltonynorsk", throw new IllegalArgumentException("Bokmaal to Nynorsk output file is not defined")))
+    val output = new File(options.getOrElse("trans", throw new IllegalArgumentException("Output file is not defined")))
 
-    wipeAndCreateNewFile(outputNnToNb)
-    wipeAndCreateNewFile(outputNbToNn)
+    wipeAndCreateNewFile(output)
 
     val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
     val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
 
     println("Dumps resolved, starting translation")
-    translateDump(bokmaalDump, Bokmaal, Nynorsk, outputNbToNn)
-    translateDump(nynorskDump, Nynorsk, Bokmaal, outputNnToNb)
+    translateDump(bokmaalDump, Bokmaal, Nynorsk, output)
+    translateDump(nynorskDump, Nynorsk, Bokmaal, output)
   }
 }
