@@ -60,3 +60,8 @@ If the reduction flag is not used, all synonyms will be listed without mapping t
     dramaene,dramaa
     høydesyke,høgdesjuke
     skipsregistrene,skipsregistera
+
+The script may be executed within the docker image with:
+
+    docker run -v /tmp/dockertmp:/data <image-name> bash -l -c "/synonymcreator/create_synonyms.sh --trans /data/trans.full.docker.txt --output /data/output.expansion.txt"
+    docker run -v /tmp/dockertmp:/data <image-name> bash -l -c "/synonymcreator/create_synonyms.sh --trans /data/trans.full.docker.txt --reduction nn --output /data/output.reduction.nn.txt"
