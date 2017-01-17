@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
+import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import resource._
 
 import scala.io.{Codec, Source}
