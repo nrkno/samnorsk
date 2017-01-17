@@ -29,7 +29,7 @@ class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends Aper
 class RemoteApertiumRunner(fromLanguage: String, toLanguage: String, user: String, server: String, keyFile: Path)
   extends ApertiumRunner {
   override def translate(text: String): String = {
-    s"ssh $user@$server \"echo \\\"$text\\\" | apertium $fromLanguage-$toLanguage\"".!!.trim
+    s"""ssh $user@$server "echo \\"$text\\" | apertium $fromLanguage-$toLanguage"""".!!.trim
   }
 }
 
