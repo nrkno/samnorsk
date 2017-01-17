@@ -10,8 +10,8 @@ https://www.elastic.co/guide/en/elasticsearch/guide/master/synonyms-expand-or-co
 
 The synonym dictionaries should typically be used if we have an elastic index which contains document in
 both Bokmål and Nynorsk. Without some kind of normalization, the query results from the index will be very
-biased by the language of the query. E.g. a query for "fremtiden" will typically to find other Nynorsk documents, where
-the word "framtida" have been used instead. The synonym dictionary will either expand a number of synonyms for
+biased by the language of the query. E.g. a query for "fremtiden" will typically not be able to find other Nynorsk documents where
+the word "framtida" has been used instead. The synonym dictionary will either expand a number of synonyms for
 each word in the document, or reduce words of similar meaning to one canonical form, either in Nynorsk or 
 Bokmål.
 
