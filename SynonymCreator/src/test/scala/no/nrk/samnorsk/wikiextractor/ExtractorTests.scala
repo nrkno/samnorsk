@@ -2,7 +2,7 @@ package no.nrk.samnorsk.wikiextractor
 
 import java.io.File
 
-import no.nrk.samnorsk.no.nrk.samnorsk.util.JsonWrapper
+import no.nrk.samnorsk.util.JsonWrapper
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import org.scalatest.FlatSpec
 

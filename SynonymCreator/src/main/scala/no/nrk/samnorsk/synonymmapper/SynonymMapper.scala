@@ -4,7 +4,7 @@ import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
 
 import info.debatty.java.stringsimilarity.JaroWinkler
-import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
+import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
 

@@ -3,20 +3,13 @@ package no.nrk.samnorsk.synonymmapper
 import java.io.File
 
 import no.nrk.samnorsk.synonymmapper.SynonymMapper.{Mapping, SynonymLine}
-import org.scalatest.FlatSpec
+import org.scalatest.FunSuite
 
 import scala.io.Source
 
-class SynonymMapperTest extends FlatSpec {
+class SynonymMapperTest extends FunSuite {
 
-
-  testSynonymWriter
-  testSynonymCreation
-
-
-  def testSynonymWriter = {
-
-
+  test("Write output in solr/elatic format") {
     val testFile = File.createTempFile("synfile", "test")
     testFile.deleteOnExit()
 
@@ -33,8 +26,7 @@ class SynonymMapperTest extends FlatSpec {
     assert(expansionLines.last === "kanskje,muligens,truleg")
   }
 
-
-  def testSynonymCreation = {
+  test("Create synonyms from frequency map") {
     val frequencyMap = Map(Mapping("høve", "mulighet") -> 20,
       Mapping("høve", "anledning") -> 16,
       Mapping("høve", "min") -> 2,

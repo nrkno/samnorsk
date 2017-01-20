@@ -1,4 +1,4 @@
-package no.nrk.samnorsk.no.nrk.samnorsk.util
+package no.nrk.samnorsk.util
 
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import com.fasterxml.jackson.module.scala.DefaultScalaModule

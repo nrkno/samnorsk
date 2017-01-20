@@ -1,4 +1,4 @@
-package no.nrk.samnorsk.no.nrk.samnorsk.util
+package no.nrk.samnorsk.util
 
 import java.io.File
 import java.nio.charset.StandardCharsets
