@@ -1,12 +1,16 @@
 package no.nrk.samnorsk.wikiextractor
 
-import scala.io.{Codec, Source}
+import scala.io.Source
 import scala.util.parsing.json.JSON
 
 
-class WikiIterator(source: Source, codec: Codec = Codec.UTF8) extends Iterator[String] {
-  val iterator = source.getLines()
-  var nextItem = nextObject()
+object WikiIterator {
+  def apply(source: Source): WikiIterator = new WikiIterator(source)
+}
+
+class WikiIterator(source: Source) extends Iterator[String] {
+  private val iterator = source.getLines()
+  private var nextItem = nextObject()
 
   override def hasNext: Boolean = nextItem.isDefined
 

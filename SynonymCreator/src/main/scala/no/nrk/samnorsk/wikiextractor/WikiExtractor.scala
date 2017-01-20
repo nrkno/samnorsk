@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import epic.preprocess.MLSentenceSegmenter
 import no.nrk.samnorsk.no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import resource._
 
@@ -31,14 +30,6 @@ object Bokmaal extends Language {
   override val Aperitum: String = "nob"
   override val Wiki: String = "no"
   override val Name: String = "nb"
-}
-
-object SentenceSegmenter {
-  val segmenter = MLSentenceSegmenter.bundled().get
-
-  def segment(text: String) : Seq[String] = {
-    segmenter(text).map(_.trim)
-  }
 }
 
 class Counter {
