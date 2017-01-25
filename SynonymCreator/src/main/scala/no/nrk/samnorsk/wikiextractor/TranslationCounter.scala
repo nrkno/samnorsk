@@ -1,10 +1,14 @@
 package no.nrk.samnorsk.wikiextractor
 
+import java.io.{File, FileWriter}
+
+import com.typesafe.scalalogging.slf4j.LazyLogging
+
 import scala.collection.mutable
 
 class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double = 1.0,
                                transTfFilter: Int = 1, transDfFilter: Double = 1.0,
-                               topN: Option[Int] = Option.empty) {
+                               topN: Option[Int] = Option.empty) extends LazyLogging {
   private val translations = mutable.HashMap[A, mutable.Map[B, Int]]()
   private val sourceTf = mutable.HashMap[A, Int]()
   private val sourceDf = mutable.HashMap[A, Int]()
@@ -60,5 +64,21 @@ class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double =
     else {
       Seq.empty
     }
+  }
+
+  def write(output: File): Unit = {
+    logger.info(s"Writing output to ${output.getAbsolutePath}")
+
+    val writer = new FileWriter(output)
+
+    for (source <- translations.keys) {
+      val trans = get(source)
+
+      if (trans.nonEmpty) {
+        writer.write(s"$source\t${trans.mkString(" ")}\n")
+      }
+    }
+
+    writer.close()
   }
 }

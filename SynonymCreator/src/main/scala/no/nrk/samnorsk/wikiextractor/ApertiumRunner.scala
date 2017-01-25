@@ -11,7 +11,6 @@ trait ApertiumRunner {
   def translate(text: String): String
 }
 
-// not tested, may not work
 class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends ApertiumRunner {
   override def translate(text: String): String = {
     val tempFile = File.createTempFile("apertium-input", fromLanguage)

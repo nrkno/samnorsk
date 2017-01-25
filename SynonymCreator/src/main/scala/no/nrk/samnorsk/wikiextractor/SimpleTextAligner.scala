@@ -7,8 +7,8 @@ import scala.util.matching.Regex
 object SimpleTextAligner {
   def tokenDiscrepancy(fromText: String, toText: String): Seq[(String, String)] = {
     val re: Regex = """\w+""".r
-    val fromTokens = re.findAllIn(fromText).toSeq
-    val toTokens = re.findAllIn(toText).toSeq
+    val fromTokens = re.findAllIn(fromText).map(_.toLowerCase).toSeq
+    val toTokens = re.findAllIn(toText).map(_.toLowerCase).toSeq
 
     if (fromTokens.size == toTokens.size) {
       fromTokens.zip(toTokens).filter(p => !p._1.equalsIgnoreCase(p._2)).toList
@@ -20,19 +20,21 @@ object SimpleTextAligner {
         var prev = false
 
         for ((fromTerm, i) <- fromTokens.zipWithIndex) {
-          val toTerm = toTokens(i)
+          if (i < toTokens.size) {
+            val toTerm = toTokens(i)
 
-          if (fromTerm.equalsIgnoreCase(toTerm)) {
-            prev = false
-          }
-          else {
-            if (prev) {
-              break
+            if (fromTerm.equalsIgnoreCase(toTerm)) {
+              prev = false
             }
+            else {
+              if (prev) {
+                break
+              }
 
-            substitutions += ((fromTerm.toLowerCase, toTerm.toLowerCase))
+              substitutions += ((fromTerm.toLowerCase, toTerm.toLowerCase))
 
-            prev = true
+              prev = true
+            }
           }
         }
       }

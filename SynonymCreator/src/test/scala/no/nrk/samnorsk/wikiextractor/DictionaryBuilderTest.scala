@@ -13,7 +13,7 @@ class DictionaryBuilderTest extends FlatSpec with Matchers {
     val it = WikiIterator(source)
     val translator = new StubApertiumRunner(Map("likar" -> "liker", "kjende" -> "kjente", "kring" -> "omkring"))
 
-    val c = DictionaryBuilder.wikiToCounts(it, translator)
+    val c = DictionaryBuilder.wikiToCounts(it, translator, new TranslationCounter[String, String]())
 
     c.docCount shouldBe 50
 
