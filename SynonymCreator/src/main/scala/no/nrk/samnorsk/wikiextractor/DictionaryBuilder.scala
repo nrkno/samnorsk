@@ -5,9 +5,12 @@ import java.io.File
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import scopt.RenderingMode.TwoColumns
 
+import scala.collection.parallel.ForkJoinTaskSupport
+import scala.concurrent.forkjoin.ForkJoinPool
 import scala.io.Source
 
 case class Config(from: String = "nno", to: String = "nob", limit: Option[Int] = None, topN: Int = 1,
+                  procs: Option[Int] = None,
                   input: Option[File] = None, output: Option[File] = None,
                   sourceTF: Int = 5, sourceIDF: Double = .5,
                   transTF: Int = 5, transIDF: Double = .5)
@@ -21,10 +24,19 @@ object DictionaryBuilder extends StrictLogging {
   }
 
   def wikiToCounts(it: WikiIterator, translator: ApertiumRunner,
-                   counter: TranslationCounter[String, String]): TranslationCounter[String, String] = {
-    for (article <- it) {
-      counter.update(textToPairs(article, translator))
-    }
+                   counter: TranslationCounter[String, String], procs: Option[Int] = None): TranslationCounter[String, String] = {
+    it.filter(_.length < 5000)
+      .grouped(10000)
+      .foreach(articles => {
+        val par = articles.par
+
+        procs match {
+          case Some(p) => par.tasksupport = new ForkJoinTaskSupport(new ForkJoinPool(p))
+          case _ => ;
+        }
+
+        par.map(textToPairs(_, translator)).seq.foreach(counter.update)
+      })
 
     counter
   }
@@ -62,6 +74,7 @@ object DictionaryBuilder extends StrictLogging {
       opt[Int]('n', "top-n")
         .action((x, c) => c.copy(topN = x))
         .text("Number of translations to keep")
+      opt[Int]('p', "procs").action((x, c) => c.copy(procs = Some(x))).text("Number of processors to use")
     }
 
     parser.parse(args, Config()) match {
@@ -72,12 +85,18 @@ object DictionaryBuilder extends StrictLogging {
         }
 
         val translator = new LocalApertiumRunner(fromLanguage = config.from, toLanguage = config.to)
-        val it = new WikiIterator(Source.fromFile(config.input.get), limit = config.limit)
+        val source = Source.fromFile(config.input.get)
+        val it = new WikiIterator(source, limit = config.limit)
+
         val counter = wikiToCounts(it, translator,
           new TranslationCounter[String, String](
             sourceTfFilter = config.sourceTF, sourceDfFilter = config.sourceIDF,
-            transTfFilter = config.transTF, transDfFilter = config.transIDF, topN = Some(config.topN)))
+            transTfFilter = config.transTF, transDfFilter = config.transIDF, topN = Some(config.topN)),
+          procs = config.procs)
+
         counter.write(config.output.get)
+
+        source.close()
       case None =>
         parser.renderUsage(TwoColumns)
     }

@@ -54,7 +54,7 @@ class WikiIterator(source: Source, limit: Option[Int] = None) extends Iterator[S
                   next = Some(t)
                   count += 1
                   if (count % 1000 == 0) {
-                    logger.info("Read $count articles ...")
+                    logger.info(s"Read $count articles ...")
                   }
                 case _ => ;
               }
