@@ -23,12 +23,21 @@ object DictionaryBuilder extends StrictLogging {
       yield pair
   }
 
+  def textToPairs(texts: Traversable[String], translator: ApertiumRunner): Traversable[(String, String)] = {
+    val sents = texts.flatMap(SentenceSegmenter.segment)
+    val translations = translator.translate(sents)
+
+    for (combined <- sents.toSeq zip translations.toSeq;
+         pair <- SimpleTextAligner.tokenDiscrepancy(combined._1, combined._2))
+      yield pair
+  }
+
   def wikiToCounts(it: WikiIterator, translator: ApertiumRunner,
                    counter: TranslationCounter[String, String], procs: Option[Int] = None): TranslationCounter[String, String] = {
     it.filter(_.length < 5000)
       .grouped(10000)
       .foreach(articles => {
-        val par = articles.par
+        val par = articles.grouped(100).toSeq.par
 
         procs match {
           case Some(p) => par.tasksupport = new ForkJoinTaskSupport(new ForkJoinPool(p))

@@ -7,8 +7,14 @@ import java.nio.file.{Files, Path}
 import scala.sys.process._
 import scala.util.matching.Regex
 
-trait ApertiumRunner {
+abstract class ApertiumRunner {
+  private val separator = "☃☃¤"
+
   def translate(text: String): String
+
+  def translate(texts: Traversable[String]): Traversable[String] = {
+    translate(texts.mkString(separator)).split(separator)
+  }
 }
 
 class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends ApertiumRunner {
