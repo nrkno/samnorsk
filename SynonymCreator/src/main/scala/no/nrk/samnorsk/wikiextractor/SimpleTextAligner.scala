@@ -2,11 +2,11 @@ package no.nrk.samnorsk.wikiextractor
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks._
-import scala.util.matching.Regex
 
 object SimpleTextAligner {
+  private val re = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ]+)""".r
+
   def tokenDiscrepancy(fromText: String, toText: String): Seq[(String, String)] = {
-    val re: Regex = """\w+""".r
     val fromTokens = re.findAllIn(fromText).map(_.toLowerCase).toSeq
     val toTokens = re.findAllIn(toText).map(_.toLowerCase).toSeq
 
