@@ -1,0 +1,8 @@
+## For testing. The production dictionary is hosted in AZURE_STORAGE_ACCOUNT=nrkrecommendation, container=elastic, blob=synonyms.txt
+skuldkjensle,skyldfølelse
+kyrkjebakken,kirkebakken
+noreg, norge
+ligg, ligger
+vesleasia, lilleasia
+austanfor, østenfor
+austerrike, østerrike
