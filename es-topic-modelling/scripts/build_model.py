@@ -1,11 +1,11 @@
 import imp
 import logging
 import os
+import sys
 from argparse import ArgumentParser
 
-import sys
 from gensim.corpora.dictionary import Dictionary
-from gensim.models.ldamodel import LdaModel
+from gensim.models.ldamulticore import LdaMulticore
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python', 'lib')))
 
@@ -48,7 +48,7 @@ def main():
     vocab.filter_extremes(no_above=.5, no_below=20, keep_n=50000)
     vocab.compactify()
 
-    model = LdaModel(corpus=[vocab.doc2bow(a) for a in it], id2word=vocab)
+    model = LdaMulticore(corpus=[vocab.doc2bow(a) for a in it], id2word=vocab, passes=2)
 
     for topic in model.print_topics(20):
         print(topic)
