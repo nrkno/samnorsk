@@ -12,20 +12,21 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'p
 from wikipedia import articles, tokenize
 
 
-def wiki_docs(dump_fn, limit=None):
+def wiki_docs(dump_fn, limit=None, stopwords=None):
     for article in articles(dump_fn, limit=limit):
-        yield tokenize(article['text'])
+        yield [token for token in tokenize(article['text']) if token not in stopwords]
 
 
 class WikiIterator():
-    def __init__(self, dump_fn, limit=None):
+    def __init__(self, dump_fn, limit=None, stopwords=None):
         super().__init__()
 
         self.dump_fn = dump_fn
         self.limit = limit
+        self.stopwords = stopwords
 
     def __iter__(self):
-        return wiki_docs(self.dump_fn, limit=self.limit)
+        return wiki_docs(self.dump_fn, limit=self.limit, stopwords=self.stopwords)
 
 
 def main():
@@ -33,16 +34,25 @@ def main():
     parser.add_argument('-d', '--dump-file')
     parser.add_argument('-m', '--model-file', default='model-lda-100')
     parser.add_argument('-l', '--limit', default=-1, type=int)
+    parser.add_argument('-s', '--stopwords')
     opts = parser.parse_args()
 
     dump_fn = opts.dump_file
     model_fn = opts.model_file
     limit = opts.limit
+    stopwords_fn = opts.stopwords
+
+    stopwords = []
+
+    if stopwords_fn:
+        with open(stopwords_fn) as f:
+            stopwords = [token.strip() for token in f]
+
 
     if limit == -1:
         limit = None
 
-    it = WikiIterator(dump_fn, limit=limit)
+    it = WikiIterator(dump_fn, limit=limit, stopwords=stopwords)
 
     vocab = Dictionary(it)
     vocab.filter_extremes(no_above=.5, no_below=20, keep_n=50000)

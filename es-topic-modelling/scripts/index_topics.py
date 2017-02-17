@@ -21,11 +21,13 @@ def main():
     parser.add_argument('-m', '--model-file', default='model-lda-100')
     parser.add_argument('-e', '--es-host', default='localhost:9200')
     parser.add_argument('-i', '--index', default='reco-test')
+    parser.add_argument('-f', '--field', default='subtitles')
     opts = parser.parse_args()
 
     model_fn = opts.model_file
     es_hosts = [opts.es_host]
     es_index = opts.index
+    field = opts.field
 
     es = Elasticsearch(hosts=es_hosts)
 
@@ -33,9 +35,9 @@ def main():
 
     q = {'query': {'match': {'subtitles_language': 'nb'}}}
 
-    for hit in scan(es, index=es_index, doc_type='tv', query=q, _source=['subtitles']):
+    for hit in scan(es, index=es_index, doc_type='tv', query=q, _source=[field]):
         source = hit['_source']
-        sub = source['subtitles']
+        sub = source[field]
 
         vec = np.zeros(100)
 
@@ -44,7 +46,7 @@ def main():
 
         doc_id = hit['_id']
 
-        es.update(es_index, 'tv', doc_id, body={'doc': {'wiki-topics': vec.tolist()}})
+        es.update(es_index, 'tv', doc_id, body={'doc': {'%s-topics' % field: vec.tolist()}})
 
 
 if __name__ == '__main__':
