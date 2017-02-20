@@ -1,0 +1,7 @@
+name: base
+dependencies:
+- future
+- lxml
+- nltk
+- pip:
+  - elasticsearch
