@@ -3,16 +3,18 @@ package no.nrk.samnorsk.synonymmapper
 import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
 
+import com.typesafe.scalalogging.slf4j.LazyLogging
 import info.debatty.java.stringsimilarity.JaroWinkler
 import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
+import scopt.RenderingMode.TwoColumns
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.{Codec, Source}
 
-object SynonymMapper {
+object SynonymMapper extends LazyLogging {
 
   case class Mapping(source: String, target: String)
   case class WordAndFrequency(word: String, mappingFrequency: Int)
@@ -176,45 +178,53 @@ object SynonymMapper {
   }
 
   def main(args: Array[String]): Unit = {
+    case class Config(trans: String = "", output: String = "", reduction: Option[String] = Some(Nynorsk.Name))
+
     Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
       override def uncaughtException(t: Thread, e: Throwable): Unit = {
-        println(s"Uncaught exception, exiting. ${e.getMessage}")
+        logger.error(s"Uncaught exception, exiting. ${e.getMessage}")
         sys.exit(1)
       }
     })
 
-    type OptionMap = Map[Symbol, String]
-    def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
-      list match {
-        case Nil => map
-        case "--trans" :: value :: tail =>
-          parseOptions(map ++ Map('trans -> value), tail)
-        case "--output" :: value :: tail =>
-          parseOptions(map ++ Map('output -> value), tail)
-        case "--reduction" :: value :: tail =>
-          parseOptions(map ++ Map('reduction -> value), tail)
-        case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
-      }
+    val parser = new scopt.OptionParser[Config]("SynonymMapper") {
+      head("SynonymMapper", "0.1.0")
+
+      opt[String]('t', "trans")
+        .action((x, c) => c.copy(trans = x))
+        .text("Translation input file.")
+        .required()
+      opt[String]('o', "output")
+        .action((x, c) => c.copy(output = x))
+        .text("Synonym output file.")
+        .required()
+      opt[String]('r', "reduction")
+        .action((x, c) => c.copy(reduction = Some(x)))
+        .text("Synonym reduction language.")
     }
-    val options: Map[Symbol, String] = parseOptions(Map(), args.toList)
-    val input = options.getOrElse('trans, "Input translations are not defined.")
-    val output = options.getOrElse('output, "Input translations are not defined.")
 
-    val reductionLanguage = options.get('reduction)
+    parser.parse(args, Config()) match {
+      case Some(config) =>
+        val input = config.trans
+        val output = config.output
+        val reductionLanguage = config.reduction
 
-    val mappings = getCorpusMapping(new File(input))
-      .map(mapping => {
-        reductionLanguage match {
-          case Some(language) if language == Bokmaal.Name => Mapping(mapping.target, mapping.source)
-          case _ => mapping
-        }
-      })
+        val mappings = getCorpusMapping(new File(input))
+          .map(mapping => {
+            reductionLanguage match {
+              case Some(language) if language == Bokmaal.Name => Mapping(mapping.target, mapping.source)
+              case _ => mapping
+            }
+          })
 
-    val frequencyMap = mappings
-      .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
-      .toMap
+        val frequencyMap = mappings
+          .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
+          .toMap
 
-    val synonyms = createSynonymsFromFrequencies(frequencyMap)
-    writeSynonyms(synonyms, new File(output), expansion = reductionLanguage.isEmpty)
+        val synonyms = createSynonymsFromFrequencies(frequencyMap)
+        writeSynonyms(synonyms, new File(output), expansion = reductionLanguage.isEmpty)
+      case None =>
+        parser.renderUsage(TwoColumns)
+    }
   }
 }

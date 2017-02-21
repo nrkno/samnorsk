@@ -9,12 +9,6 @@ import scala.collection.parallel.ForkJoinTaskSupport
 import scala.concurrent.forkjoin.ForkJoinPool
 import scala.io.Source
 
-case class Config(from: String = "nno", to: String = "nob", limit: Option[Int] = None, topN: Int = 1,
-                  procs: Option[Int] = None,
-                  input: Option[File] = None, output: Option[File] = None,
-                  sourceTF: Int = 5, sourceIDF: Double = .5,
-                  transTF: Int = 5, transIDF: Double = .5)
-
 object DictionaryBuilder extends StrictLogging {
   def textToPairs(text: String, translator: ApertiumRunner): Traversable[(String, String)] = {
     for (sent <- SentenceSegmenter.segment(text);
@@ -51,6 +45,12 @@ object DictionaryBuilder extends StrictLogging {
   }
 
   def main(args: Array[String]): Unit = {
+    case class Config(from: String = "nno", to: String = "nob", limit: Option[Int] = None, topN: Int = 1,
+                      procs: Option[Int] = None,
+                      input: Option[File] = None, output: Option[File] = None,
+                      sourceTF: Int = 5, sourceIDF: Double = .5,
+                      transTF: Int = 5, transIDF: Double = .5)
+
     val parser = new scopt.OptionParser[Config]("DictionaryBuilder") {
       head("DictionaryBuilder", "0.1.0")
 

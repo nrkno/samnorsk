@@ -8,8 +8,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.typesafe.scalalogging.slf4j.LazyLogging
 import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import resource._
+import scopt.RenderingMode.TwoColumns
 
 import scala.io.{Codec, Source}
 import scala.sys.process._
@@ -54,7 +56,7 @@ object ApertiumHelper {
   }
 }
 
-object WikiExtractor {
+object WikiExtractor extends LazyLogging {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
@@ -73,10 +75,10 @@ object WikiExtractor {
     require(dates.length == 1, "Unable to find latest date for wiki dump")
     val downloadedFile = new File(s"/tmp/${language.Name}.gz")
     val url = s"https://dumps.wikimedia.org/other/cirrussearch/current/${language.Wiki}wiki-${dates.head}-cirrussearch-content.json.gz"
-    println(s"Downloading $url")
+    logger.info(s"Downloading $url")
     new URL(url) #> downloadedFile !!
 
-    println(s"Done downloading $url")
+    logger.info(s"Done downloading $url")
     downloadedFile
   }
 
@@ -129,37 +131,45 @@ object WikiExtractor {
   }
 
   def main(args: Array[String]): Unit = {
+    case class Config(nndump: String = "", nbdump: String = "", trans: String = "")
+
     Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
       override def uncaughtException(t: Thread, e: Throwable): Unit = {
-        println(s"Uncaught exception, exiting. ${e.getMessage}")
+        logger.error(s"Uncaught exception, exiting. ${e.getMessage}")
         sys.exit(1)
       }
     })
 
-    type OptionMap = Map[String, String]
-    def parseOptions(map : OptionMap, list: List[String]) : OptionMap = {
-      list match {
-        case Nil => map
-        case "--nndump" :: value :: tail =>
-          parseOptions(map ++ Map(Nynorsk.Name -> value), tail)
-        case "--nbdump" :: value :: tail =>
-          parseOptions(map ++ Map(Bokmaal.Name -> value), tail)
-        case "--trans" :: value :: tail =>
-          parseOptions(map ++ Map("trans" -> value), tail)
-        case option :: tail => throw new IllegalArgumentException("Unknown option " + option)
-      }
+    val parser = new scopt.OptionParser[Config]("WikiExtractor") {
+      head("WikiExtractor 0.1.0")
+
+      opt[String]('n', "nndump")
+        .action((x, c) => c.copy(nndump = x))
+        .text("NNO Wikipedia CirrusSearch dump file.")
+        .required()
+      opt[String]('b', "nbdump")
+        .action((x, c) => c.copy(nbdump = x))
+        .text("NOB Wikipedia CirrusSearch dump file.")
+        .required()
+      opt[String]('t', "trans")
+        .action((x, c) => c.copy(trans = x))
+        .text("Translations output file.")
+        .required()
     }
 
-    val options: Map[String, String] = parseOptions(Map(), args.toList)
-    val output = new File(options.getOrElse("trans", throw new IllegalArgumentException("Output file is not defined")))
+    parser.parse(args, Config()) match {
+      case Some(config) =>
+        val output = new File(config.trans)
 
-    wipeAndCreateNewFile(output)
+        wipeAndCreateNewFile(output)
 
-    val nynorskDump = resolveDump(options.get(Nynorsk.Name), Nynorsk)
-    val bokmaalDump = resolveDump(options.get(Bokmaal.Name), Bokmaal)
+        val nynorskDump = resolveDump(Some(config.nndump), Nynorsk)
+        val bokmaalDump = resolveDump(Some(config.nbdump), Bokmaal)
 
-    println("Dumps resolved, starting translation")
-    translateDump(bokmaalDump, Bokmaal, Nynorsk, output)
-    translateDump(nynorskDump, Nynorsk, Bokmaal, output)
+        println("Dumps resolved, starting translation")
+        translateDump(bokmaalDump, Bokmaal, Nynorsk, output)
+        translateDump(nynorskDump, Nynorsk, Bokmaal, output)
+      case None => parser.renderUsage(TwoColumns)
+    }
   }
 }
