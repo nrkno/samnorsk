@@ -13,6 +13,7 @@ import scopt.RenderingMode.TwoColumns
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.{Codec, Source}
+import scala.util.matching.Regex
 
 object SynonymMapper extends LazyLogging {
 
@@ -21,16 +22,16 @@ object SynonymMapper extends LazyLogging {
 
   case class SynonymLine(synonyms: Seq[String], canonicalForm: String) {
 
-    def getReductionSynonyms = {
+    def getReductionSynonyms: String = {
       synonyms.mkString("", ",", " => ") + canonicalForm
     }
 
-    def getExpansionSynonyms = {
+    def getExpansionSynonyms: String = {
       (synonyms :+ canonicalForm).mkString(",")
     }
   }
 
-  val TokenizerRegex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
+  val TokenizerRegex: Regex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
   val JaroWinler = new JaroWinkler()
 
   def getArticleMappings(nynorskArticle: String, bokmaalArticle: String): Seq[Mapping] = {
@@ -77,7 +78,7 @@ object SynonymMapper extends LazyLogging {
     mappingsInArticle
   }
 
-  def getCorpusMapping(translations: File) = {
+  def getCorpusMapping(translations: File): Iterator[Mapping] = {
 
     val mappings = Source.fromFile(translations)(codec = Codec.UTF8).getLines()
       .map(line => JsonWrapper.convert(line, classOf[ArticleAndTranslation]))
@@ -170,7 +171,7 @@ object SynonymMapper extends LazyLogging {
       .toSeq
   }
 
-  def writeSynonyms(synonymLines: Seq[SynonymLine], output: File, expansion: Boolean) = {
+  def writeSynonyms(synonymLines: Seq[SynonymLine], output: File, expansion: Boolean): Unit = {
     IOUtils.wipeAndCreateNewFile(output)
     synonymLines.map(x => if (expansion) x.getExpansionSynonyms else x.getReductionSynonyms)
       .grouped(1000)

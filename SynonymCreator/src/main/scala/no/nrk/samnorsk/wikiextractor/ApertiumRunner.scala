@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
 import scala.sys.process._
 import scala.util.matching.Regex
 
-abstract class ApertiumRunner {
+abstract class ApertiumRunner(val fromLanguage: Language, val toLanguage:Language) {
   private val separator = "☃☃¤"
 
   def translate(text: String): String
@@ -17,13 +17,13 @@ abstract class ApertiumRunner {
   }
 }
 
-class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends ApertiumRunner {
+class LocalApertiumRunner(fromLanguage: Language, toLanguage: Language) extends ApertiumRunner(fromLanguage, toLanguage) {
   override def translate(text: String): String = {
-    val tempFile = File.createTempFile("apertium-input", fromLanguage)
+    val tempFile = File.createTempFile("apertium-input", fromLanguage.Name)
 
     try {
       Files.write(tempFile.toPath, text.getBytes(StandardCharsets.UTF_8))
-      s"apertium $fromLanguage-$toLanguage ${tempFile.getAbsolutePath}".!!.trim
+      s"apertium ${fromLanguage.Apertium}-${toLanguage.Apertium} ${tempFile.getAbsolutePath}".!!.trim
     } finally {
       Files.delete(tempFile.toPath)
     }
@@ -31,14 +31,15 @@ class LocalApertiumRunner(fromLanguage: String, toLanguage: String) extends Aper
 }
 
 // not tested, may not work
-class RemoteApertiumRunner(fromLanguage: String, toLanguage: String, user: String, server: String, keyFile: Path)
-  extends ApertiumRunner {
+class RemoteApertiumRunner(fromLanguage: Language, toLanguage: Language, user: String, server: String, keyFile: Path)
+  extends ApertiumRunner(fromLanguage, toLanguage) {
   override def translate(text: String): String = {
-    s"""ssh $user@$server "echo \\"$text\\" | apertium $fromLanguage-$toLanguage"""".!!.trim
+    s"""ssh $user@$server "echo \\"$text\\" | apertium ${fromLanguage.Apertium}-${toLanguage.Apertium}"""".!!.trim
   }
 }
 
-class StubApertiumRunner(substitutions: Map[String, String]) extends ApertiumRunner {
+class StubApertiumRunner(substitutions: Map[String, String])
+  extends ApertiumRunner(fromLanguage = Nynorsk, toLanguage = Bokmaal) {
   override def translate(text: String): String = {
     val re: Regex = """\w+""".r
     val trans: StringBuilder = new StringBuilder()

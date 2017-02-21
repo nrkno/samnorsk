@@ -45,7 +45,7 @@ object DictionaryBuilder extends StrictLogging {
   }
 
   def main(args: Array[String]): Unit = {
-    case class Config(from: String = "nno", to: String = "nob", limit: Option[Int] = None, topN: Int = 1,
+    case class Config(from: Language = Nynorsk, to: Language = Bokmaal, limit: Option[Int] = None, topN: Int = 1,
                       procs: Option[Int] = None,
                       input: Option[File] = None, output: Option[File] = None,
                       sourceTF: Int = 5, sourceIDF: Double = .5,
@@ -55,7 +55,10 @@ object DictionaryBuilder extends StrictLogging {
       head("DictionaryBuilder", "0.1.0")
 
       opt[String]('d', "direction")
-        .action((x, c) => x.split("-") match { case Array(from, to) => c.copy(from = from, to = to) })
+        .action((x, c) => x.split("-") match {
+          case Array(from, to) =>
+            // TODO should exit on illegal language codes
+            c.copy(from = Language(from).getOrElse(Bokmaal), to = Language(to).getOrElse(Bokmaal)) })
         .text("Translation direction (ex. nno-nob).")
       opt[Int]('l', "limit")
         .action((x, c) => c.copy(limit = Some(x)))
