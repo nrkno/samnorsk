@@ -5,7 +5,6 @@ import java.lang.Thread.UncaughtExceptionHandler
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, StandardOpenOption}
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
@@ -47,31 +46,7 @@ object Bokmaal extends Language {
   override val Name: String = "nb"
 }
 
-class Counter {
-  private val counter = new AtomicInteger()
-
-  def next(): Int = counter.incrementAndGet()
-}
-
-object ApertiumHelper {
-
-  def translate(input: String, fromLanguage: Language, toLanguage: Language, counter: Counter): String = {
-    val tempInputFile = File.createTempFile("apertium-input", fromLanguage.Name)
-    try {
-      Files.write(tempInputFile.toPath, input.getBytes(StandardCharsets.UTF_8))
-      val chunkNumber = counter.next()
-      println(s"Started translating chunk $chunkNumber from ${fromLanguage.Name} to ${toLanguage.Name}")
-      val trans = s"apertium ${fromLanguage.Apertium}-${toLanguage.Apertium} ${tempInputFile.getAbsolutePath}".!!.trim
-      println(s"Done translating chunk $chunkNumber")
-      trans
-    } finally {
-      Files.delete(tempInputFile.toPath)
-    }
-  }
-}
-
 object WikiExtractor extends LazyLogging {
-
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
 
@@ -117,6 +92,8 @@ object WikiExtractor extends LazyLogging {
 
   def translateDump(dump: File, fromLanguage: Language, toLanguage: Language, translationFile: File,
                     limit: Option[Int] = None): Unit = {
+    wipeAndCreateNewFile(translationFile)
+
     managed(Source.fromInputStream(new GZIPInputStream(new FileInputStream(dump)))(Codec.UTF8))
       .acquireAndGet(source => {
         val it = new WikiIterator(source, limit = limit)
@@ -136,6 +113,7 @@ object WikiExtractor extends LazyLogging {
 
   def wipeAndCreateNewFile(file: File): Boolean = {
     if (file.exists()) {
+      logger.warn("Deleting existing translations file {}", file.toPath)
       Files.delete(file.toPath)
     }
     file.createNewFile()
@@ -174,8 +152,6 @@ object WikiExtractor extends LazyLogging {
     parser.parse(args, Config()) match {
       case Some(config) =>
         val output = new File(config.trans)
-
-        wipeAndCreateNewFile(output)
 
         val nynorskDump = resolveDump(Some(config.nndump), Nynorsk)
         val bokmaalDump = resolveDump(Some(config.nbdump), Bokmaal)

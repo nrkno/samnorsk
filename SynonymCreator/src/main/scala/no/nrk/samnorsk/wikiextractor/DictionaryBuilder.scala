@@ -3,6 +3,8 @@ package no.nrk.samnorsk.wikiextractor
 import java.io.File
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
+import no.nrk.samnorsk.synonymmapper.LinearMapper
+import no.nrk.samnorsk.synonymmapper.SynonymMapper.StringMapping
 import scopt.RenderingMode.TwoColumns
 
 import scala.collection.parallel.ForkJoinTaskSupport
@@ -10,19 +12,21 @@ import scala.concurrent.forkjoin.ForkJoinPool
 import scala.io.Source
 
 object DictionaryBuilder extends StrictLogging {
-  def textToPairs(text: String, translator: ApertiumRunner): Traversable[(String, String)] = {
+  val mapper = new LinearMapper
+
+  def textToPairs(text: String, translator: ApertiumRunner): Seq[StringMapping] = {
     for (sent <- SentenceSegmenter.segment(text);
          translation = translator.translate(sent);
-         pair <- SimpleTextAligner.tokenDiscrepancy(sent, translation))
+         pair <- mapper.map(sent, translation))
       yield pair
   }
 
-  def textToPairs(texts: Traversable[String], translator: ApertiumRunner): Traversable[(String, String)] = {
+  def textToPairs(texts: Traversable[String], translator: ApertiumRunner): Seq[StringMapping] = {
     val sents = texts.flatMap(SentenceSegmenter.segment)
     val translations = translator.translate(sents)
 
     for (combined <- sents.toSeq zip translations.toSeq;
-         pair <- SimpleTextAligner.tokenDiscrepancy(combined._1, combined._2))
+         pair <- mapper.map(combined._1, combined._2))
       yield pair
   }
 

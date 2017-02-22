@@ -3,6 +3,7 @@ package no.nrk.samnorsk.wikiextractor
 import java.io.{File, FileWriter}
 
 import com.typesafe.scalalogging.slf4j.LazyLogging
+import no.nrk.samnorsk.synonymmapper.SynonymMapper.Mapping
 
 import scala.collection.mutable
 
@@ -18,30 +19,30 @@ class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double =
 
   def docCount:Int = _docCount
 
-  def update(pairs: Traversable[(A, B)]): TranslationCounter[A, B] = {
+  def update(pairs: Seq[Mapping[A, B]]): TranslationCounter[A, B] = {
     _docCount += 1
 
-    pairs.foreach { case (k, v) =>
-      translations(k) = translations.getOrElse(k, mutable.Map())
-      translations(k)(v) = translations(k).getOrElse(v, 0) + 1
+    pairs.foreach { m =>
+      translations(m.source) = translations.getOrElse(m.source, mutable.Map())
+      translations(m.source)(m.target) = translations(m.source).getOrElse(m.target, 0) + 1
     }
 
-    pairs.map(_._1)
+    pairs.map(_.source)
       .groupBy(identity)
       .mapValues(_.size)
       .foreach((e: (A, Int)) => e match {
         case (k, v) => sourceTf(k) = sourceTf.getOrElse(k, 0) + v
       })
 
-    pairs.map(_._2)
+    pairs.map(_.target)
       .groupBy(identity)
       .mapValues(_.size)
       .foreach((e: (B, Int)) => e match {
         case (k, v) => transTf(k) = transTf.getOrElse(k, 0) + v
       })
 
-    pairs.map(_._1).toSet.foreach((k: A) => sourceDf(k) = sourceDf.getOrElse(k, 0) + 1)
-    pairs.map(_._2).toSet.foreach((k: B) => transDf(k) = transDf.getOrElse(k, 0) + 1)
+    pairs.map(_.source).toSet.foreach((k: A) => sourceDf(k) = sourceDf.getOrElse(k, 0) + 1)
+    pairs.map(_.target).toSet.foreach((k: B) => transDf(k) = transDf.getOrElse(k, 0) + 1)
 
     this
   }

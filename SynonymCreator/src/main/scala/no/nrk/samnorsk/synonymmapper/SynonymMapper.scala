@@ -4,20 +4,19 @@ import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
 
 import com.typesafe.scalalogging.slf4j.LazyLogging
-import info.debatty.java.stringsimilarity.JaroWinkler
 import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
 import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
 import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
 import scopt.RenderingMode.TwoColumns
 
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.{Codec, Source}
-import scala.util.matching.Regex
 
 object SynonymMapper extends LazyLogging {
 
-  case class Mapping(source: String, target: String)
+  case class Mapping[A, B](source: A, target: B)
+  type StringMapping = Mapping[String, String]
+
   case class WordAndFrequency(word: String, mappingFrequency: Int)
 
   case class SynonymLine(synonyms: Seq[String], canonicalForm: String) {
@@ -31,62 +30,16 @@ object SynonymMapper extends LazyLogging {
     }
   }
 
-  val TokenizerRegex: Regex = """([A-Za-zØÆÅøæåéÉàÀôÔòÒ*]+)""".r
-  val JaroWinler = new JaroWinkler()
-
-  def getArticleMappings(nynorskArticle: String, bokmaalArticle: String): Seq[Mapping] = {
-
-    @tailrec
-    def getSentenceMappingRec(mappingsQueue: Seq[Mapping], consecutiveDissimilarities: Int, mappingFinished: Seq[Mapping]): Seq[Mapping] = {
-      if (consecutiveDissimilarities == 3 ) {
-        Seq()
-      } else if (mappingsQueue.isEmpty) {
-        mappingFinished
-      } else {
-        val mapping = mappingsQueue.head
-        val dissimilarities = {
-          if (JaroWinler.similarity(mapping.source, mapping.target) < 0.8) {
-            consecutiveDissimilarities + 1
-          } else {
-            0
-          }
-        }
-        getSentenceMappingRec(mappingsQueue.tail, dissimilarities, mappingFinished :+ mapping)
-      }
-    }
-
-    val nynorskSentences = nynorskArticle.split("\\.")
-    val bokmaalSentences = bokmaalArticle.split("\\.")
-
-    val mappingsInArticle = nynorskSentences.zip(bokmaalSentences).flatMap { case (nynorskSentence, bokmaalSentence) =>
-      val nynorskTokens = TokenizerRegex.findAllIn(nynorskSentence).toSeq
-      val bokmaalTokens = TokenizerRegex.findAllIn(bokmaalSentence).toSeq
-
-      val sentenceMapping = if (nynorskTokens.size == bokmaalTokens.size) {
-        val mappings: Seq[Mapping] = nynorskTokens.zip(bokmaalTokens)
-
-          // Words out of voc have been annotated with * prefix.
-          .filter { case (nynorskWord, bokmaalWord) => !nynorskWord.contains('*') && !bokmaalWord.contains('*') }
-          .map { case (nynorskWord, bokmaalWord) => Mapping(nynorskWord.toLowerCase, bokmaalWord.toLowerCase) }
-
-        getSentenceMappingRec(mappings, 0, Seq())
-      } else {
-        Seq()
-      }
-      sentenceMapping
-    }
-    mappingsInArticle
-  }
-
-  def getCorpusMapping(translations: File): Iterator[Mapping] = {
+  def getCorpusMapping(translations: File): Iterator[StringMapping] = {
+    val mapper = new EditDistanceMapper
 
     val mappings = Source.fromFile(translations)(codec = Codec.UTF8).getLines()
       .map(line => JsonWrapper.convert(line, classOf[ArticleAndTranslation]))
       .grouped(1000).flatMap(group => {
       group.par.flatMap(article => {
         val sentenceMappings = article match {
-          case wikiArticle if wikiArticle.fromLanguage == Nynorsk.Name => getArticleMappings(wikiArticle.original, wikiArticle.translation)
-          case wikiArticle if wikiArticle.fromLanguage == Bokmaal.Name => getArticleMappings(wikiArticle.translation, wikiArticle.original)
+          case wikiArticle if wikiArticle.fromLanguage == Nynorsk.Name => mapper.map(wikiArticle.original, wikiArticle.translation)
+          case wikiArticle if wikiArticle.fromLanguage == Bokmaal.Name => mapper.map(wikiArticle.translation, wikiArticle.original)
           case _ => throw new IllegalArgumentException("Invalid input")
         }
         sentenceMappings
@@ -95,11 +48,11 @@ object SynonymMapper extends LazyLogging {
     mappings
   }
 
-  def createSynonymsFromFrequencies(frequencyMap: Map[Mapping, Int]): Seq[SynonymLine] = {
+  def createSynonymsFromFrequencies(frequencyMap: Map[StringMapping, Int]): Seq[SynonymLine] = {
 
-    def aggregateFrequencies(frequencyMap: Map[Mapping, Int], cutoff: Int = 5): Map[String, Seq[WordAndFrequency]] = {
+    def aggregateFrequencies(frequencyMap: Map[StringMapping, Int], cutoff: Int = 5): Map[String, Seq[WordAndFrequency]] = {
 
-      val createInsert = (map: mutable.Map[String, Seq[WordAndFrequency]], mapping: Mapping, frequency: Int) =>
+      val createInsert = (map: mutable.Map[String, Seq[WordAndFrequency]], mapping: StringMapping, frequency: Int) =>
         map += (mapping.source -> (map.getOrElse(mapping.source, Seq()) :+ WordAndFrequency(mapping.target, frequency)))
 
       frequencyMap
@@ -219,7 +172,7 @@ object SynonymMapper extends LazyLogging {
           })
 
         val frequencyMap = mappings
-          .foldLeft(mutable.Map.empty[Mapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
+          .foldLeft(mutable.Map.empty[StringMapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
           .toMap
 
         val synonyms = createSynonymsFromFrequencies(frequencyMap)
