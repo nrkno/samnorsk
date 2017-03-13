@@ -10,7 +10,7 @@ object WikiIterator {
   def apply(source: Source): WikiIterator = new WikiIterator(source)
 }
 
-class WikiIterator(source: Source, limit: Option[Int] = None) extends Iterator[String] with LazyLogging {
+class WikiIterator(val source: Source, val limit: Option[Int] = None) extends Iterator[String] with LazyLogging {
   private var count = 0
   private val iterator = source.getLines()
   private var nextItem = nextObject()

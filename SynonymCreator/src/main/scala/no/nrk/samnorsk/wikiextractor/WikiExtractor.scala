@@ -50,7 +50,7 @@ object WikiExtractor extends LazyLogging {
   @JsonIgnoreProperties(ignoreUnknown = true)
   case class Article(text: String)
 
-  case class ArticleAndTranslation(original: String, translation: String, fromLanguage: String, toLanguage: String)
+  case class ArticleAndTranslation(original: String, translation: Option[String] = None, fromLanguage: Language, toLanguage: Language)
 
   val DateRegex: Regex = """20[\d]{6}""".r
 
@@ -87,7 +87,7 @@ object WikiExtractor extends LazyLogging {
       .grouped(100)
       .toSeq.par
       .flatMap(articles => articles.zip(runner.translate(articles).toSeq))
-      .map(article => ArticleAndTranslation(article._1, article._2, runner.fromLanguage.Name, runner.toLanguage.Name))
+      .map(article => ArticleAndTranslation(article._1, Some(article._2), runner.fromLanguage, runner.toLanguage))
   }
 
   def translateDump(dump: File, fromLanguage: Language, toLanguage: Language, translationFile: File,

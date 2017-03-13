@@ -82,4 +82,24 @@ class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double =
 
     writer.close()
   }
+
+  def crossMerge(counter: TranslationCounter[B, A]): TranslationCounter[A, B] = {
+    _docCount += counter.docCount
+
+    counter.sourceTf.foreach { case (k, v) => transTf(k) = transTf.getOrElse(k, 0) + v }
+    counter.transTf.foreach { case (k, v) => sourceTf(k) = sourceTf.getOrElse(k, 0) + v }
+    counter.sourceDf.foreach { case (k, v) => transDf(k) = transDf.getOrElse(k, 0) + v }
+    counter.transDf.foreach { case (k, v) => sourceDf(k) = sourceDf.getOrElse(k, 0) + v }
+
+    counter.translations.foreach {
+      case (s, trans) =>
+        trans.foreach {
+          case (t, v) =>
+            translations(t) = translations.getOrElse(t, mutable.Map())
+            translations(t)(s) = translations(t).getOrElse(s, 0) + v
+        }
+    }
+
+    this
+  }
 }

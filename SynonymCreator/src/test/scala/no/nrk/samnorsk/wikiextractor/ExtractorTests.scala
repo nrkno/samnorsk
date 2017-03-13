@@ -17,6 +17,6 @@ class ExtractorTests extends FlatSpec {
   val outputTranslation = Source.fromFile(outputFile).getLines().toSeq
   assert(outputTranslation.size == 50)
   val articleAndTrans = JsonWrapper.convert(outputTranslation.head, classOf[ArticleAndTranslation])
-  assert(articleAndTrans.translation.startsWith("*Wasit er en landsby øst i *Jemen."))
+  assert(articleAndTrans.translation.get.startsWith("*Wasit er en landsby øst i *Jemen."))
   assert(articleAndTrans.original.startsWith("Wasit er ein landsby aust i Jemen."))
 }

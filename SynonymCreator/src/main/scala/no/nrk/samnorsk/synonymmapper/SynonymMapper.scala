@@ -2,19 +2,28 @@ package no.nrk.samnorsk.synonymmapper
 
 import java.io._
 import java.lang.Thread.UncaughtExceptionHandler
+import java.util.zip.GZIPInputStream
 
 import com.typesafe.scalalogging.slf4j.LazyLogging
-import no.nrk.samnorsk.util.{IOUtils, JsonWrapper}
-import no.nrk.samnorsk.wikiextractor.WikiExtractor.ArticleAndTranslation
-import no.nrk.samnorsk.wikiextractor.{Bokmaal, Nynorsk}
+import no.nrk.samnorsk.util.IOUtils
+import no.nrk.samnorsk.wikiextractor._
 import scopt.RenderingMode.TwoColumns
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.io.{Codec, Source}
+
+// TODO expansion/reduction, filtering, output format
+
+case class DumpDescription(dump: File, fromLanguage: Language, toLanguage: Language)
+
+case class Processor(iter: WikiIterator, runner: ApertiumRunner, counter: TranslationCounter[String, String],
+                     fromLanguage: Language, toLanguage: Language)
 
 object SynonymMapper extends LazyLogging {
 
   case class Mapping[A, B](source: A, target: B)
+
   type StringMapping = Mapping[String, String]
 
   case class WordAndFrequency(word: String, mappingFrequency: Int)
@@ -30,22 +39,27 @@ object SynonymMapper extends LazyLogging {
     }
   }
 
-  def getCorpusMapping(translations: File): Iterator[StringMapping] = {
+  def processDumps(dumps: Seq[DumpDescription], limit: Option[Int] = None): Seq[TranslationCounter[String, String]] = {
     val mapper = new EditDistanceMapper
 
-    val mappings = Source.fromFile(translations)(codec = Codec.UTF8).getLines()
-      .map(line => JsonWrapper.convert(line, classOf[ArticleAndTranslation]))
-      .grouped(1000).flatMap(group => {
-      group.par.flatMap(article => {
-        val sentenceMappings = article match {
-          case wikiArticle if wikiArticle.fromLanguage == Nynorsk.Name => mapper.map(wikiArticle.original, wikiArticle.translation)
-          case wikiArticle if wikiArticle.fromLanguage == Bokmaal.Name => mapper.map(wikiArticle.translation, wikiArticle.original)
-          case _ => throw new IllegalArgumentException("Invalid input")
-        }
-        sentenceMappings
+    val procs = dumps.map(d => Processor(iter = new WikiIterator(Source.fromInputStream(new GZIPInputStream(new FileInputStream(d.dump)))(Codec.UTF8), limit = limit),
+      runner = new LocalApertiumRunner(fromLanguage = d.fromLanguage, toLanguage = d.toLanguage),
+      counter = new TranslationCounter[String, String](),
+      fromLanguage = d.fromLanguage,
+      toLanguage = d.toLanguage))
+
+    procs.foreach(p => {
+      p.iter.grouped(1000).toStream.par.foreach(articles => {
+        p.runner.translate(articles)
+          .toSeq.zip(articles)
+          .map(at => mapper.map(at._2, at._1).filter(m => m.source != m.target))
+          .foreach(m => p.counter.update(m))
       })
     })
-    mappings
+
+    procs.foreach(_.iter.source.close())
+
+    procs.map(_.counter)
   }
 
   def createSynonymsFromFrequencies(frequencyMap: Map[StringMapping, Int]): Seq[SynonymLine] = {
@@ -132,7 +146,8 @@ object SynonymMapper extends LazyLogging {
   }
 
   def main(args: Array[String]): Unit = {
-    case class Config(trans: String = "", output: String = "", reduction: Option[String] = Some(Nynorsk.Name))
+    case class Config(nnDump: Option[DumpDescription] = None, nbDump: Option[DumpDescription] = None,
+                      output: String = "", reduction: Option[String] = Some(Nynorsk.Name), limit: Option[Int] = None)
 
     Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
       override def uncaughtException(t: Thread, e: Throwable): Unit = {
@@ -144,10 +159,20 @@ object SynonymMapper extends LazyLogging {
     val parser = new scopt.OptionParser[Config]("SynonymMapper") {
       head("SynonymMapper", "0.1.0")
 
-      opt[String]('t', "trans")
-        .action((x, c) => c.copy(trans = x))
-        .text("Translation input file.")
-        .required()
+      opt[String]('n', "nn-dump")
+        .action((x, c) =>
+          c.copy(nnDump = Some(DumpDescription(dump = new File(x), fromLanguage = Nynorsk, toLanguage = Bokmaal))))
+        .text("Nynorsk Wikipedia Cirrus dump file.")
+
+      opt[String]('b', "nb-dump")
+        .action((x, c) =>
+          c.copy(nbDump = Some(DumpDescription(dump = new File(x), fromLanguage = Bokmaal, toLanguage = Nynorsk))))
+        .text("Nynorsk Wikipedia Cirrus dump file.")
+
+      opt[Int]('l', "limit")
+        .action((x, c) => c.copy(limit = Some(x)))
+        .text("Process this number of articles.")
+
       opt[String]('o', "output")
         .action((x, c) => c.copy(output = x))
         .text("Synonym output file.")
@@ -159,24 +184,25 @@ object SynonymMapper extends LazyLogging {
 
     parser.parse(args, Config()) match {
       case Some(config) =>
-        val input = config.trans
         val output = config.output
         val reductionLanguage = config.reduction
 
-        val mappings = getCorpusMapping(new File(input))
-          .map(mapping => {
-            reductionLanguage match {
-              case Some(language) if language == Bokmaal.Name => Mapping(mapping.target, mapping.source)
-              case _ => mapping
-            }
-          })
+        var dumpDescr = ListBuffer.empty[DumpDescription]
 
-        val frequencyMap = mappings
-          .foldLeft(mutable.Map.empty[StringMapping, Int]) { (acc, mapping) => acc += mapping -> (acc.getOrElse(mapping, 0) + 1) }
-          .toMap
+        config.nnDump.foreach(d => dumpDescr += d)
+        config.nbDump.foreach(d => dumpDescr += d)
 
-        val synonyms = createSynonymsFromFrequencies(frequencyMap)
-        writeSynonyms(synonyms, new File(output), expansion = reductionLanguage.isEmpty)
+        if (dumpDescr.isEmpty) {
+          logger.error("Need at least one dump parameter")
+          System.exit(1)
+        }
+
+        val counters = processDumps(dumpDescr, limit = config.limit).toList
+
+        val counter = counters.head
+        counters.tail.foreach(counter.crossMerge)
+
+        counter.write(new File(output))
       case None =>
         parser.renderUsage(TwoColumns)
     }
