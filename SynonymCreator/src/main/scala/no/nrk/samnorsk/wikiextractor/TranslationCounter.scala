@@ -7,10 +7,13 @@ import no.nrk.samnorsk.synonymmapper.SynonymMapper.Mapping
 
 import scala.collection.mutable
 
-class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double = 1.0,
-                               transTfFilter: Int = 1, transDfFilter: Double = 1.0,
-                               topN: Option[Int] = Option.empty) extends LazyLogging {
+case class CounterFilterParams(topN: Int = 1,
+                               sourceTF: Int = 1, sourceIDF: Double = 1.0,
+                               transTF: Int = 1, transIDF: Double = 1.0)
+
+class TranslationCounter[A, B](val filterParams: CounterFilterParams = CounterFilterParams()) extends LazyLogging {
   private val translations = mutable.HashMap[A, mutable.Map[B, Int]]()
+  private val reverseTranslations = mutable.HashMap[B, mutable.Map[A, Int]]()
   private val sourceTf = mutable.HashMap[A, Int]()
   private val sourceDf = mutable.HashMap[A, Int]()
   private val transTf = mutable.HashMap[B, Int]()
@@ -25,6 +28,9 @@ class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double =
     pairs.foreach { m =>
       translations(m.source) = translations.getOrElse(m.source, mutable.Map())
       translations(m.source)(m.target) = translations(m.source).getOrElse(m.target, 0) + 1
+
+      reverseTranslations(m.target) = reverseTranslations.getOrElse(m.target, mutable.Map())
+      reverseTranslations(m.target)(m.source) = reverseTranslations(m.target).getOrElse(m.source, 0) + 1
     }
 
     pairs.map(_.source)
@@ -49,34 +55,64 @@ class TranslationCounter[A, B](sourceTfFilter: Int = 1, sourceDfFilter: Double =
 
   def get(source: A): Seq[B] = {
     if (translations.contains(source)
-      && sourceTf.getOrElse(source, 0) >= sourceTfFilter
-      && sourceDf.getOrElse(source, _docCount).toDouble / _docCount <= sourceDfFilter) {
+      && sourceTf.getOrElse(source, 0) >= filterParams.sourceTF
+      && sourceDf.getOrElse(source, _docCount).toDouble / _docCount <= filterParams.sourceIDF) {
 
       val candidates = translations.getOrElse(source, mutable.Map[B, Int]()).keys.filter(e => {
-        transTf.getOrElse(e, 0) >= transTfFilter && transDf.getOrElse(e, _docCount).toDouble / _docCount <= transDfFilter
+        transTf.getOrElse(e, 0) >= filterParams.transTF && transDf.getOrElse(e, _docCount).toDouble / _docCount <= filterParams.transIDF
       })
 
       candidates.toSeq
         .map(trans => (trans, translations(source).getOrElse(trans, 0)))
         .sortWith(_._2 > _._2)
         .map(_._1)
-        .take(topN.getOrElse(1))
+        .take(filterParams.topN)
     }
     else {
       Seq.empty
     }
   }
 
-  def write(output: File): Unit = {
+  def getReverse(source: B): Seq[A] = {
+    if (reverseTranslations.contains(source)
+      && transTf.getOrElse(source, 0) >= filterParams.transTF
+      && transDf.getOrElse(source, _docCount).toDouble / _docCount <= filterParams.transIDF) {
+
+      val candidates = reverseTranslations.getOrElse(source, mutable.Map[A, Int]()).keys.filter(e => {
+        sourceTf.getOrElse(e, 0) >= filterParams.sourceTF && sourceDf.getOrElse(e, _docCount).toDouble / _docCount <= filterParams.sourceIDF
+      })
+
+      candidates.toSeq
+        .map(trans => (trans, reverseTranslations(source).getOrElse(trans, 0)))
+        .sortWith(_._2 > _._2)
+        .map(_._1)
+        .take(filterParams.topN)
+    }
+    else {
+      Seq.empty
+    }
+  }
+
+  def write(output: File, reverse: Boolean = false): Unit = {
     logger.info(s"Writing output to ${output.getAbsolutePath}")
 
     val writer = new FileWriter(output)
 
-    for (source <- translations.keys) {
-      val trans = get(source)
+    if (reverse) {
+      for (source <- translations.keys) {
+        val trans = get(source)
 
-      if (trans.nonEmpty) {
-        writer.write(s"$source\t${trans.mkString(" ")}\n")
+        if (trans.nonEmpty) {
+          writer.write(s"$source => ${trans.mkString(",")}\n")
+        }
+      }
+    } else {
+      for (source <- reverseTranslations.keys) {
+        val trans = getReverse(source)
+
+        if (trans.nonEmpty) {
+          writer.write(s"${trans.mkString(",")} => $source\n")
+        }
       }
     }
 

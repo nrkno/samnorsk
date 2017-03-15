@@ -20,6 +20,11 @@ case class DumpDescription(dump: File, fromLanguage: Language, toLanguage: Langu
 case class Processor(iter: WikiIterator, runner: ApertiumRunner, counter: TranslationCounter[String, String],
                      fromLanguage: Language, toLanguage: Language)
 
+sealed trait Direction
+case object FORWARD extends Direction
+case object REVERSE extends Direction
+case object BOTH extends Direction
+
 object SynonymMapper extends LazyLogging {
 
   case class Mapping[A, B](source: A, target: B)
@@ -39,12 +44,11 @@ object SynonymMapper extends LazyLogging {
     }
   }
 
-  def processDumps(dumps: Seq[DumpDescription], limit: Option[Int] = None): Seq[TranslationCounter[String, String]] = {
-    val mapper = new EditDistanceMapper
-
+  def processDumps(dumps: Seq[DumpDescription], mapper: TranslationMapper[String, String], limit: Option[Int] = None,
+                   filterParams: CounterFilterParams = CounterFilterParams()): Seq[TranslationCounter[String, String]] = {
     val procs = dumps.map(d => Processor(iter = new WikiIterator(Source.fromInputStream(new GZIPInputStream(new FileInputStream(d.dump)))(Codec.UTF8), limit = limit),
       runner = new LocalApertiumRunner(fromLanguage = d.fromLanguage, toLanguage = d.toLanguage),
-      counter = new TranslationCounter[String, String](),
+      counter = new TranslationCounter[String, String](filterParams = filterParams),
       fromLanguage = d.fromLanguage,
       toLanguage = d.toLanguage))
 
@@ -147,7 +151,10 @@ object SynonymMapper extends LazyLogging {
 
   def main(args: Array[String]): Unit = {
     case class Config(nnDump: Option[DumpDescription] = None, nbDump: Option[DumpDescription] = None,
-                      output: String = "", reduction: Option[String] = Some(Nynorsk.Name), limit: Option[Int] = None)
+                      output: String = "", reduction: Option[String] = Some(Nynorsk.Name), limit: Option[Int] = None,
+                      direction: Direction = FORWARD,
+                      mapper: TranslationMapper[String, String] = new EditDistanceMapper(),
+                      filterParams: CounterFilterParams = CounterFilterParams())
 
     Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler {
       override def uncaughtException(t: Thread, e: Throwable): Unit = {
@@ -180,6 +187,34 @@ object SynonymMapper extends LazyLogging {
       opt[String]('r', "reduction")
         .action((x, c) => c.copy(reduction = Some(x)))
         .text("Synonym reduction language.")
+
+      opt[String]('d', "direction")
+        .action((x, c) => c.copy(direction = x match {
+          case "forward" => FORWARD
+          case "reverse" => REVERSE
+          case "both" => BOTH}))
+        .text("Synonym file direction.")
+
+      opt[String]('m', "mapper").action((x, c) => c.copy(mapper = x match {
+        case "editdist" => new EditDistanceMapper()
+        case "linear" => new LinearMapper()}))
+        .text("Translation mapping algorithm.")
+
+      opt[Int]('S', "source-tf-filter")
+        .action((x, c) => c.copy(filterParams = c.filterParams.copy(sourceTF = x)))
+        .text("Minimum term frequency for source words")
+      opt[Double]('s', "source-df-filter")
+        .action((x, c) => c.copy(filterParams = c.filterParams.copy(sourceIDF = x)))
+        .text("Maximum doc frequency for source words")
+      opt[Int]('T', "trans-tf-filter")
+        .action((x, c) => c.copy(filterParams = c.filterParams.copy(transTF = x)))
+        .text("Minimum term frequency for translated words")
+      opt[Double]('t', "trans-df-filter")
+        .action((x, c) => c.copy(filterParams = c.filterParams.copy(transIDF = x)))
+        .text("Maximum doc frequency for translated words")
+      opt[Int]('N', "top-n")
+        .action((x, c) => c.copy(filterParams = c.filterParams.copy(topN = x)))
+        .text("Number of translations to keep")
     }
 
     parser.parse(args, Config()) match {
@@ -197,12 +232,19 @@ object SynonymMapper extends LazyLogging {
           System.exit(1)
         }
 
-        val counters = processDumps(dumpDescr, limit = config.limit).toList
+        val counters = processDumps(
+          dumpDescr, config.mapper, limit = config.limit, filterParams = config.filterParams).toList
 
         val counter = counters.head
         counters.tail.foreach(counter.crossMerge)
 
-        counter.write(new File(output))
+        if (config.direction == BOTH || config.direction == FORWARD) {
+          counter.write(new File(output))
+        }
+
+        if (config.direction == BOTH || config.direction == REVERSE) {
+          counter.write(new File(output + "-rev"), reverse = true)
+        }
       case None =>
         parser.renderUsage(TwoColumns)
     }

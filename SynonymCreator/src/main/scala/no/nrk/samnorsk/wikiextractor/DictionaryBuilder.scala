@@ -105,9 +105,9 @@ object DictionaryBuilder extends StrictLogging {
         val it = new WikiIterator(source, limit = config.limit)
 
         val counter = wikiToCounts(it, translator,
-          new TranslationCounter[String, String](
-            sourceTfFilter = config.sourceTF, sourceDfFilter = config.sourceIDF,
-            transTfFilter = config.transTF, transDfFilter = config.transIDF, topN = Some(config.topN)),
+          new TranslationCounter[String, String](CounterFilterParams(
+            sourceTF = config.sourceTF, sourceIDF = config.sourceIDF,
+            transTF = config.transTF, transIDF = config.transIDF, topN = config.topN)),
           procs = config.procs)
 
         counter.write(config.output.get)
