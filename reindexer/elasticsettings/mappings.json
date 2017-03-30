@@ -1,0 +1,54 @@
+{
+  "properties": {
+    "title": {
+      "type": "string",
+      "similarity": "BM25",
+      "term_vector": "yes",
+      "analyzer": "no_analyzer"
+    },
+    "categories": {
+      "type": "string",
+      "index": "not_analyzed"
+    },
+    "titleDescription": {
+      "type": "string",
+      "similarity": "BM25",
+      "term_vector": "yes",
+      "analyzer": "no_analyzer"
+    },
+    "seriesId": {
+      "type": "string",
+      "index": "not_analyzed"
+    },
+    "subtitles": {
+      "type": "string",
+      "similarity": "BM25",
+      "term_vector": "yes",
+      "analyzer": "no_analyzer"
+    },
+    "subtitles_language": {
+      "type": "string",
+      "index": "not_analyzed"
+    },
+    "descriptions_language": {
+      "type": "string",
+      "index": "not_analyzed"
+    },
+    "productionDate": {
+      "type": "date",
+      "format": "basic_date"
+    },
+    "availableFrom": {
+      "type": "date",
+      "format": "basic_date"
+    },
+    "availableTo": {
+      "type": "date",
+      "format": "basic_date"
+    },
+    "updated": {
+      "type": "date",
+      "format": "epoch_millis"
+    }
+  }
+}

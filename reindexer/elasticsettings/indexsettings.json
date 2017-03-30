@@ -1,0 +1,34 @@
+{
+  "index": {
+    "analysis": {
+      "filter": {
+        "no_synonym_filter": {
+          "type": "synonym",
+          "synonyms_path" : "analysis/synonyms.txt"
+        },
+        "no_snowball" : {
+          "type" : "snowball",
+          "name" : "light_nynorsk",
+          "language" : "Norwegian"
+        },
+        "no_stop" : {
+          "type" : "stop",
+          "stopwords_path" : "stopwords/nb_nn.txt"
+        }
+      },
+      "analyzer": {
+        "no_analyzer": {
+          "tokenizer": "letter",
+          "filter": [
+            "lowercase",
+            "no_stop",
+            "no_synonym_filter",
+            "no_stop",
+            "no_snowball",
+            "no_stop"
+          ]
+        }
+      }
+    }
+  }
+}
