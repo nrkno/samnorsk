@@ -1,4 +1,4 @@
-package no.nrk.samnorsk.wikiextractor
+package no.nrk.samnorsk.synonymmapper
 
 import com.typesafe.scalalogging.slf4j.LazyLogging
 

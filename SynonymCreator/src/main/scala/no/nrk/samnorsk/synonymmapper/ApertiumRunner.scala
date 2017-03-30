@@ -1,4 +1,4 @@
-package no.nrk.samnorsk.wikiextractor
+package no.nrk.samnorsk.synonymmapper
 
 import java.io.File
 import java.nio.charset.StandardCharsets

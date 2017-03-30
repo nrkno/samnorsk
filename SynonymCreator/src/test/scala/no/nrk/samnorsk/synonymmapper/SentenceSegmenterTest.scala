@@ -1,4 +1,4 @@
-package no.nrk.samnorsk.wikiextractor
+package no.nrk.samnorsk.synonymmapper
 
 import org.scalatest.{FlatSpec, Matchers}
 
